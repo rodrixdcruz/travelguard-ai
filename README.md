@@ -16,6 +16,11 @@ risk score and a safety briefing.
 > data — no API keys required. The ML intelligence layer (contextual risk model +
 > recommendation engine) trains and runs on **synthetic demonstration data** and
 > falls back transparently to the rule engine when artifacts are absent.
+>
+> **Persistence:** when `DATABASE_URL` is set (the live deployment uses Neon
+> PostgreSQL), every analyzed journey is stored and served by
+> `GET /api/journeys/recent` — writes are best-effort and never fail an analysis.
+> Without a database the API behaves exactly as pure demo mode.
 
 ## ML intelligence layer
 
