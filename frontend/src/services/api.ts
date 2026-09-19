@@ -18,6 +18,31 @@ async function post<T>(path: string, body: unknown): Promise<T> {
   return res.json() as Promise<T>
 }
 
+/** One persisted journey from GET /api/journeys/recent. */
+export interface RecentJourney {
+  id: number
+  origin: { name: string; lat: number; lon: number }
+  destination: { name: string; lat: number; lon: number }
+  date: string
+  time: string
+  distance_km: number
+  duration_min: number
+  risk_score: number | null
+  risk_level: string | null
+  intelligence_mode: string | null
+  created_at: string | null
+}
+
+export function fetchRecentJourneys(limit = 10): Promise<{ journeys: RecentJourney[]; database: boolean }> {
+  return fetch(`${API_BASE}/api/journeys/recent?limit=${limit}`).then(async (res) => {
+    if (!res.ok) {
+      const detail = await res.text().catch(() => res.statusText)
+      throw new Error(`API error ${res.status}: ${detail.slice(0, 200)}`)
+    }
+    return res.json() as Promise<{ journeys: RecentJourney[]; database: boolean }>
+  })
+}
+
 export function analyzeJourney(req: AnalyzeRequest): Promise<AnalyzeResponse> {
   return post<AnalyzeResponse>('/api/analyze-journey', req)
 }

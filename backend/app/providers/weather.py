@@ -1,16 +1,31 @@
 """Weather provider seam for the discovery layer.
 
-Returns demo route-level conditions today; a live API (e.g. OpenWeatherMap)
-slots in behind the same signature when WEATHER_API_KEY is configured.
-The AI day planner uses this for the safety context check.
+LIVE-first: real conditions via key-less Open-Meteo; deterministic demo
+weather only as labeled fallback (the AI day planner's safety-context check
+uses this). Observed fields are LIVE; visibility is derived and flagged
+ESTIMATED.
 """
 from __future__ import annotations
 
 import hashlib
+import logging
 from typing import Any
+
+from .weather_live import WeatherUnavailable, current_conditions as live_current
+
+logger = logging.getLogger("travelguard.weather")
 
 
 def current_conditions(latitude: float, longitude: float) -> dict[str, Any]:
+    """LIVE Open-Meteo conditions; deterministic demo weather as labeled fallback."""
+    try:
+        return live_current(latitude, longitude)
+    except WeatherUnavailable as exc:
+        logger.warning("Live weather unavailable (%s) — DEMO fallback", exc)
+    return _demo_conditions(latitude, longitude)
+
+
+def _demo_conditions(latitude: float, longitude: float) -> dict[str, Any]:
     """Deterministic demo weather for a coordinate (stable across runs)."""
     h = hashlib.sha256(f"{latitude:.3f},{longitude:.3f}".encode()).digest()
     choices = ["Clear", "Partly Cloudy", "Haze", "Light Rain"]

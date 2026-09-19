@@ -88,13 +88,17 @@ export default function RiskMap({
       routePoints.length > 0
         ? routePoints
         : markers.map((m) => ({ lat: m.latitude, lon: m.longitude }))
-    if (src.length === 0) return [18.922, 72.8347] as [number, number]
+    // Neutral default: whole-of-India view. Never center on Mumbai unless
+    // Mumbai data is actually on the map (selected trip / demo mode / GPS).
+    if (src.length === 0) return [21.5, 79.0] as [number, number]
     const n = src.length
     return [
       src.reduce((a, p) => a + p.lat, 0) / n,
       src.reduce((a, p) => a + p.lon, 0) / n,
     ]
   }, [routePoints, markers])
+
+  const isEmpty = center.length === 2 && routePoints.length === 0 && markers.length === 0
 
   const markerPoints = useMemo(
     () => markers.map((m) => [m.latitude, m.longitude] as [number, number]),
@@ -104,7 +108,7 @@ export default function RiskMap({
   return (
     <MapContainer
       center={center}
-      zoom={13}
+      zoom={isEmpty ? 5 : 13}
       className={`${heightClass} rounded-2xl z-0`}
       scrollWheelZoom={false}
     >

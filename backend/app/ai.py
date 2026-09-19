@@ -216,13 +216,13 @@ def fallback_discovery_answer(question: str, discovery: dict[str, Any]) -> str:
         affordable = [p for p in places if (p.get("entry_fee") or 0) * discovery.get("travelers", 1) <= amount]
         if not affordable:
             return (
-                f"Nothing in the current demo dataset fits ₹{amount:,} — the cheapest "
+                f"Nothing in the current data fits ₹{amount:,} — the cheapest "
                 f"option is ₹{min((p.get('entry_fee') or 0) for p in places):,} per person "
                 "(plus transport, which is an estimate)."
             )
         names = ", ".join(p["name"] for p in affordable[:5])
         return (
-            f"Within ₹{amount:,} per person, the current dataset suggests: {names}. "
+            f"Within ₹{amount:,} per person, the current data suggests: {names}. "
             "Ticket figures are DEMO data; transport and food are ESTIMATED."
         )
 

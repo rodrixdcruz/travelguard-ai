@@ -6,11 +6,14 @@ app works end-to-end with zero external API keys (DEMO MODE).
 from __future__ import annotations
 
 import hashlib
+import logging
 from datetime import datetime, timedelta
 from typing import Any, Optional
 
 from . import demo_data
 from .schemas import AnalyzeRequest, Coordinate, RoutePoint
+
+logger = logging.getLogger("travelguard.services")
 
 try:
     import httpx
@@ -83,9 +86,29 @@ def _demo_weather_for_key(key: str) -> dict[str, Any]:
     }
 
 
-async def fetch_route_weather(origin_name: str, destination_name: str) -> dict[str, Any]:
-    """Demo weather provider. Live APIs can be wired here behind the same signature."""
-    return _demo_weather_for_key(_route_key(origin_name, destination_name))
+async def fetch_route_weather(origin_name: str, destination_name: str, *,
+                              origin_coord: Coordinate | None = None,
+                              destination_coord: Coordinate | None = None) -> dict[str, Any]:
+    """LIVE-first route weather.
+
+    With route midpoint coordinates, real conditions come from Open-Meteo
+    (key-less, data_status="LIVE"; visibility is ESTIMATED and flagged).
+    Without coordinates — or when the provider is unreachable — the
+    deterministic demo weather is returned and labeled "DEMO" so nothing
+    silently poses as live data.
+    """
+    if origin_coord is not None and destination_coord is not None:
+        mid_lat = (origin_coord.lat + destination_coord.lat) / 2.0
+        mid_lon = (origin_coord.lon + destination_coord.lon) / 2.0
+        try:
+            from .providers.weather_live import current_conditions
+            return current_conditions(mid_lat, mid_lon)
+        except Exception as exc:
+            logger.warning("Live route weather unavailable (%s) — DEMO fallback", exc)
+    demo = _demo_weather_for_key(_route_key(origin_name, destination_name))
+    demo["data_source"] = "travelguard_demo_weather"
+    demo["data_status"] = "DEMO"
+    return demo
 
 
 # ── Per-segment conditions (deterministic, context-aware) ───────────────

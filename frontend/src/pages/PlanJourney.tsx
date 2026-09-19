@@ -1,4 +1,5 @@
 import JourneyForm from '../components/JourneyForm'
+import RecentJourneysPanel from '../components/RecentJourneysPanel'
 import ResultsView from '../components/ResultsView'
 import Panel from '../components/Panel'
 import { useJourney } from '../context/JourneyContext'
@@ -23,9 +24,12 @@ export default function PlanJourney() {
         )}
       </div>
       <div className="grid lg:grid-cols-3 gap-6 items-start">
-        <Panel className="lg:col-span-1">
-          <JourneyForm compact />
-        </Panel>
+        <div className="lg:col-span-1 space-y-6">
+          <Panel>
+            <JourneyForm compact />
+          </Panel>
+          <RecentJourneysPanel />
+        </div>
         <div className="lg:col-span-2">
           {analysis ? (
             <ResultsView mapHeight="h-[360px]" />

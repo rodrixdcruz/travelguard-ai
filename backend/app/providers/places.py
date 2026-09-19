@@ -1,15 +1,21 @@
 """Places provider — nearby discovery with distance and category filtering.
 
-Currently backed by the deterministic Mumbai demo dataset. A live provider
-(e.g. OSM Overpass / Google Places) can replace `fetch_nearby` internals
-without touching the API or UI layers; the normalized shape stays identical.
+LIVE-first: when the key-less OpenStreetMap Overpass provider answers, real
+POIs are returned with data_status="LIVE". Any failure (network, throttle,
+empty area) falls back to the Mumbai demo dataset, whose items keep their
+honest data_status="DEMO" — callers and the UI surface the difference via
+the per-item labels and the response-level `provider` fields.
 """
 from __future__ import annotations
 
+import logging
 import math
 from typing import Any, Optional
 
 from .demo_mumbai import DEMO_PLACES
+from .places_osm import OsmUnavailable, fetch_nearby as osm_fetch_nearby
+
+logger = logging.getLogger("travelguard.places")
 
 CATEGORY_ALIASES = {
     "attraction": {"attraction", "historical", "museum", "culture", "religious", "photography", "experience"},
@@ -54,6 +60,21 @@ def fetch_nearby(
     limit = max(1, min(int(limit), 50))
     radius_km = max(0.2, min(float(radius_km), 60.0))
 
+    # LIVE-first: real OSM results win whenever the provider answers.
+    try:
+        live = osm_fetch_nearby(
+            latitude,
+            longitude,
+            radius_m=int(radius_km * 1000),
+            category=category,
+            limit=limit,
+        )
+        results = [_with_distance(p, latitude, longitude) for p in live]
+        results.sort(key=lambda p: p["distance_km"])
+        return results[:limit]
+    except OsmUnavailable as exc:
+        logger.warning("Live places unavailable (%s) — serving DEMO fallback", exc)
+
     results = [_with_distance(p, latitude, longitude) for p in DEMO_PLACES]
     results = [p for p in results if p["distance_km"] <= radius_km]
 
@@ -70,6 +91,8 @@ def fetch_nearby(
 
 
 def fetch_by_id(place_id: str) -> Optional[dict[str, Any]]:
+    # Live OSM ids are not cached server-side; detail lookups are served from
+    # the demo dataset only. Returning None (→ API 404) keeps labels honest.
     for p in DEMO_PLACES:
         if p["id"] == place_id:
             out = dict(p)

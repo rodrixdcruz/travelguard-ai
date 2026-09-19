@@ -21,7 +21,7 @@ const NEAR_ME_BUTTONS: { key: string; label: string; filter?: MapFilter; service
 const FILTERS: MapFilter[] = ['ALL', 'ATTRACTIONS', 'FOOD', 'SAFETY', 'SERVICES', 'TRANSPORT']
 
 export default function NearMe() {
-  const { location, setLocation } = useTouristLocation()
+  const { location, setLocation, needsLocation } = useTouristLocation()
   const [places, setPlaces] = useState<Place[]>([])
   const [food, setFood] = useState<FoodPlace[]>([])
   const [services, setServices] = useState<LocalService[]>([])
@@ -31,8 +31,16 @@ export default function NearMe() {
   const [activeButton, setActiveButton] = useState<string>('attractions')
   const [selected, setSelected] = useState<string | null>(null)
   const [locating, setLocating] = useState(false)
+  const [statuses, setStatuses] = useState<{ places: string; food: string; services: string } | null>(null)
 
   useEffect(() => {
+    // Live mode, no location yet: nothing to discover (never silently Mumbai).
+    if (needsLocation) {
+      setPlaces([])
+      setFood([])
+      setServices([])
+      return
+    }
     let cancelled = false
     setLoading(true)
     setLocError(null)
@@ -46,13 +54,14 @@ export default function NearMe() {
         setPlaces(p.places)
         setFood(f.food)
         setServices(s.services)
+        setStatuses({ places: p.data_status, food: f.data_status, services: s.data_status })
       })
       .catch((e) => !cancelled && setLocError(e instanceof Error ? e.message : 'Discovery failed'))
       .finally(() => !cancelled && setLoading(false))
     return () => {
       cancelled = true
     }
-  }, [location.latitude, location.longitude])
+  }, [location.latitude, location.longitude, needsLocation])
 
   const allMarkers = useMemo(
     () => markersFromDiscovery(places, food, services),
@@ -94,7 +103,7 @@ export default function NearMe() {
     } catch (e) {
       setLocError(
         (e instanceof Error ? e.message : 'Location unavailable') +
-          ' — pick a demo location below instead.',
+          ' — enter coordinates or pick a place below instead.',
       )
     } finally {
       setLocating(false)
@@ -117,7 +126,13 @@ export default function NearMe() {
           <div className="flex items-center justify-between gap-2 mb-3">
             <div className="text-sm text-slate-200">{location.name}</div>
             <span className="text-[9px] font-bold tracking-widest text-slate-500 border border-white/10 rounded px-1.5 py-0.5">
-              {location.source === 'browser' ? 'GPS' : 'DEMO'}
+              {location.source === 'browser'
+                ? 'GPS'
+                : location.source === 'demo'
+                  ? 'DEMO'
+                  : location.source === 'search'
+                    ? 'SELECTED'
+                    : 'NOT SET'}
             </span>
           </div>
           <div className="grid grid-cols-2 gap-2">
@@ -141,6 +156,12 @@ export default function NearMe() {
           {locError && (
             <p className="mt-2 text-[11px] text-amber-300 bg-amber-400/10 border border-amber-400/20 rounded-lg px-2.5 py-1.5">
               {locError}
+            </p>
+          )}
+          {needsLocation && (
+            <p className="mt-2 text-[11px] text-amber-300 bg-amber-400/10 border border-amber-400/20 rounded-lg px-2.5 py-1.5">
+              Location permission denied or not set — use “Use my location”, enter
+              coordinates, or pick a place. Nothing is assumed.
             </p>
           )}
         </Panel>
@@ -217,7 +238,13 @@ export default function NearMe() {
 
         <p className="text-[11px] text-slate-500">
           {visibleMarkers.length} nearby result{visibleMarkers.length === 1 ? '' : 's'}
-          {filter !== 'ALL' ? ' · filtered from demo dataset' : ' · demo dataset'}
+          {statuses
+            ? ` · data: ${[
+                statuses.places !== 'LIVE' ? `places ${statuses.places}` : null,
+                statuses.food !== 'LIVE' ? `food ${statuses.food}` : null,
+                statuses.services !== 'LIVE' ? `services ${statuses.services}` : null,
+              ].filter(Boolean).join(', ') || 'LIVE (OpenStreetMap)'}`
+            : ''}
         </p>
 
         <div className="flex flex-wrap gap-1.5">

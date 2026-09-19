@@ -25,7 +25,7 @@ const WANT_TO_DO = [
 ]
 
 export default function Dashboard() {
-  const { location, setLocation, setSosOpen } = useTouristLocation()
+  const { location, setLocation, setSosOpen, needsLocation } = useTouristLocation()
   const [places, setPlaces] = useState<Place[] | null>(null)
   const [services, setServices] = useState<LocalService[] | null>(null)
   const [safety, setSafety] = useState<LocalSafety | null>(null)
@@ -42,6 +42,15 @@ export default function Dashboard() {
   }, [])
 
   useEffect(() => {
+    // Live mode with no location yet: show the explicit "set your location"
+    // state instead of fetching demo data for a coordinate the user never
+    // chose (never silently Mumbai).
+    if (needsLocation) {
+      setPlaces([])
+      setServices([])
+      setSafety(null)
+      return
+    }
     let alive = true
     setPlaces(null)
     setServices(null)
@@ -62,7 +71,7 @@ export default function Dashboard() {
     return () => {
       alive = false
     }
-  }, [location.latitude, location.longitude])
+  }, [location.latitude, location.longitude, needsLocation])
 
   const markers: MapMarker[] = useMemo(
     () => markersFromDiscovery(places ?? [], [], services ?? []),
@@ -83,6 +92,15 @@ export default function Dashboard() {
   }
 
   const topPlaces = (places ?? []).slice(0, 4)
+
+  const locationLabel =
+    location.source === 'browser'
+      ? 'GPS — your actual position'
+      : location.source === 'unset'
+        ? 'Location not set — use GPS or pick a place below'
+        : location.source === 'search'
+          ? 'Selected location'
+          : 'DEMO LOCATION — not your real position'
 
   return (
     <div>
@@ -123,11 +141,6 @@ export default function Dashboard() {
           {locMsg && (
             <p className="mt-2 text-[11px] text-amber-300 bg-amber-400/10 border border-amber-400/20 rounded-lg px-2.5 py-1.5">
               {locMsg}
-            </p>
-          )}
-          {location.source !== 'browser' && (
-            <p className="mt-2 text-[10px] font-bold tracking-widest text-slate-500">
-              DEMO LOCATION — not your real position
             </p>
           )}
         </div>
@@ -183,17 +196,18 @@ export default function Dashboard() {
             <div className="flex items-center justify-between gap-3">
               <div>
                 <div className="text-lg font-semibold text-slate-100">{location.name}</div>
-                <div className="text-xs text-slate-500">
-                  {location.latitude.toFixed(4)}, {location.longitude.toFixed(4)} ·{' '}
-                  {location.source === 'browser' ? 'GPS' : 'DEMO LOCATION'}
-                </div>
+                <div className="text-xs text-slate-500">{locationLabel}</div>
               </div>
               <Link to="/near-me" className="text-xs text-cyan-300 hover:text-cyan-200">Explore nearby →</Link>
             </div>
           </Panel>
 
           <Panel title="Nearby">
-            {places === null ? (
+            {needsLocation ? (
+              <p className="text-sm text-amber-300 bg-amber-400/10 border border-amber-400/20 rounded-lg px-3 py-2">
+                Set your location above (GPS or pick a place) to see what's nearby.
+              </p>
+            ) : places === null ? (
               <p className="text-sm text-slate-500 animate-pulse">Discovering nearby…</p>
             ) : (
               <ul className="grid sm:grid-cols-2 gap-3">
@@ -221,7 +235,9 @@ export default function Dashboard() {
 
         <div className="space-y-6">
           <Panel title="Local safety">
-            {safety ? (
+            {needsLocation ? (
+              <p className="text-sm text-slate-500">Location needed — set it above.</p>
+            ) : safety ? (
               <div>
                 <div className="flex items-end justify-between">
                   <div>
@@ -245,7 +261,9 @@ export default function Dashboard() {
           </Panel>
 
           <Panel title="Local services">
-            {services === null ? (
+            {needsLocation ? (
+              <p className="text-sm text-slate-500">Location needed — set it above.</p>
+            ) : services === null ? (
               <p className="text-sm text-slate-500 animate-pulse">Loading…</p>
             ) : (
               <ul className="space-y-2">

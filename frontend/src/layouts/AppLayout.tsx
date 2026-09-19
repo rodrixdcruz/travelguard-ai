@@ -1,5 +1,6 @@
 import { Link, Outlet, useLocation } from 'react-router-dom'
 import { useTouristLocation } from '../context/LocationContext'
+import ModeToggle from '../components/ModeToggle'
 import SosCenter from '../components/SosCenter'
 
 const NAV = [
@@ -72,10 +73,11 @@ export default function AppLayout() {
       </main>
 
       <footer className="border-t border-white/5 py-4 text-center text-xs text-slate-600">
-        <span className="inline-flex items-center gap-1.5 text-[10px] font-bold tracking-widest text-sky-300 border border-sky-400/30 bg-sky-400/10 rounded px-2 py-0.5 mr-2">
-          <span className="w-1.5 h-1.5 rounded-full bg-sky-400" /> DEMO MODE
+        <span className="mr-3">
+          <ModeToggle />
         </span>
-        Places, food &amp; services are DEMO data · transport, meal costs &amp; weather context are ESTIMATED ·
+        Discovery data is LIVE via OpenStreetMap when reachable, otherwise labeled DEMO ·
+        transport, meal costs &amp; visibility are ESTIMATED ·
         Not a substitute for official advisories
       </footer>
 

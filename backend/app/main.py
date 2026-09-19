@@ -277,7 +277,9 @@ async def analyze_journey(req: AnalyzeRequest) -> AnalyzeResponse:
     except ValueError:
         raise HTTPException(status_code=422, detail="date must be YYYY-MM-DD and time must be HH:MM.")
 
-    route_weather = await services.fetch_route_weather(req.origin, req.destination)
+    route_weather = await services.fetch_route_weather(
+        req.origin, req.destination, origin_coord=origin, destination_coord=destination,
+    )
     segments = _build_segments(path, is_known, travel_dt, route_weather)
 
     total_distance = round(sum(s.distance_km for s in segments), 1)

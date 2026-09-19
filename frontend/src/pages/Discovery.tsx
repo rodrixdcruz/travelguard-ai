@@ -153,7 +153,7 @@ function ItineraryItem({ item }: { item: PlanItem }) {
 }
 
 export function DayPlanner() {
-  const { location, setLocation } = useTouristLocation()
+  const { location, setLocation, needsLocation } = useTouristLocation()
   const [params, setParams] = useSearchParams()
   const interestParam = params.get('interest')
   const [interests, setInterests] = useState<string[]>(
@@ -168,6 +168,10 @@ export function DayPlanner() {
   const [error, setError] = useState<string | null>(null)
 
   async function generate() {
+    if (needsLocation) {
+      setError('Set your location first — use GPS or pick a place.')
+      return
+    }
     setLoading(true)
     setError(null)
     try {
@@ -239,7 +243,7 @@ export function DayPlanner() {
         ML ranks what fits you; the optimizer builds a feasible schedule. Your location:{' '}
         <span className="text-slate-200">{location.name}</span>{' '}
         <span className="text-[9px] font-bold tracking-widest text-slate-500 border border-white/10 rounded px-1 py-0.5 align-middle">
-          {location.source === 'browser' ? 'GPS' : 'DEMO LOCATION'}
+          {location.source === 'browser' ? 'GPS' : location.source === 'demo' ? 'DEMO LOCATION' : location.source === 'unset' ? 'NOT SET' : 'SELECTED'}
         </span>
       </p>
 
@@ -413,7 +417,7 @@ export function DayPlanner() {
                       </div>
                       <div className="text-xs text-slate-500">Contextual risk {plan.safety.risk_score.toFixed(1)}/100</div>
                     </div>
-                    <DataBadge status="DEMO" />
+                    <DataBadge status={plan.safety.data_status ?? 'DEMO'} />
                   </div>
                   <p className="text-[11px] text-slate-500 mt-2">
                     Model: TravelGuard ML {plan.safety.model_version} · {plan.safety.disclaimer}
@@ -453,26 +457,30 @@ const FOOD_FILTERS = ['ALL', 'VEG', 'NON-VEG', 'LOCAL', 'STREET FOOD', 'CAFE', '
 type FoodFilter = (typeof FOOD_FILTERS)[number]
 
 export function FoodNearYou() {
-  const { location } = useTouristLocation()
+  const { location, needsLocation } = useTouristLocation()
   const [food, setFood] = useState<import('../types/discovery').FoodPlace[] | null>(null)
   const [filter, setFilter] = useState<FoodFilter>('ALL')
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     let alive = true
+    if (needsLocation) {
+      setFood([])
+      return
+    }
     setFood(null)
     setError(null)
     fetchNearbyFood({ latitude: location.latitude, longitude: location.longitude, radius_km: 15, limit: 30 })
       .then((res) => {
         if (alive) setFood(res.food)
       })
-      .catch((e) => {
+      .catch(() => {
         if (alive) setError('Food data is temporarily unavailable. Choose a place to continue or retry shortly.')
       })
     return () => {
       alive = false
     }
-  }, [location.latitude, location.longitude])
+  }, [location.latitude, location.longitude, needsLocation])
 
   const filtered = useMemo(() => {
     if (!food) return []
@@ -507,7 +515,9 @@ export function FoodNearYou() {
       <h1 className="font-display text-2xl font-bold text-slate-100">Food Near You</h1>
       <p className="text-sm text-slate-400 mb-6">
         Eateries around {location.name}{' '}
-        <span className="text-[9px] font-bold tracking-widest text-slate-500 border border-white/10 rounded px-1 py-0.5 align-middle">DEMO LOCATION</span>
+        <span className="text-[9px] font-bold tracking-widest text-slate-500 border border-white/10 rounded px-1 py-0.5 align-middle">
+          {location.source === 'browser' ? 'GPS' : location.source === 'demo' ? 'DEMO LOCATION' : location.source === 'unset' ? 'NOT SET' : 'SELECTED'}
+        </span>
       </p>
 
       <div className="flex flex-wrap gap-1.5 mb-5">
@@ -574,13 +584,18 @@ export function FoodNearYou() {
 /* ═════════════════════════ LOCAL SAFETY ═════════════════════════ */
 
 export function LocalSafetyPage() {
-  const { location } = useTouristLocation()
+  const { location, needsLocation } = useTouristLocation()
   const [safety, setSafety] = useState<LocalSafety | null>(null)
   const [services, setServices] = useState<import('../types/discovery').LocalService[] | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     let alive = true
+    if (needsLocation) {
+      setSafety(null)
+      setServices([])
+      return
+    }
     setSafety(null)
     setServices(null)
     setError(null)
@@ -619,7 +634,9 @@ export function LocalSafetyPage() {
       <h1 className="font-display text-2xl font-bold text-slate-100">Local Safety</h1>
       <p className="text-sm text-slate-400 mb-6">
         Contextual conditions where you are — {location.name}{' '}
-        <span className="text-[9px] font-bold tracking-widest text-slate-500 border border-white/10 rounded px-1 py-0.5 align-middle">DEMO LOCATION</span>
+        <span className="text-[9px] font-bold tracking-widest text-slate-500 border border-white/10 rounded px-1 py-0.5 align-middle">
+          {location.source === 'browser' ? 'GPS' : location.source === 'demo' ? 'DEMO LOCATION' : location.source === 'unset' ? 'NOT SET' : 'SELECTED'}
+        </span>
       </p>
 
       {error && <Panel><p className="text-sm text-red-300">{error}</p></Panel>}

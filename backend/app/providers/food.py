@@ -1,13 +1,20 @@
 """Food provider — nearby eateries with dietary/budget/cuisine filters.
 
-Demo-backed; live provider can be swapped in behind the same function.
+LIVE-first (OSM Overpass, key-less) with honest DEMO fallback. Per-person
+spend estimates stay ESTIMATED (documented rate per price class) — never
+presented as live prices.
 """
 from __future__ import annotations
 
+import logging
 from typing import Any, Optional
 
 from .places import _with_distance
 from .demo_mumbai import DEMO_FOOD
+from .food_osm import fetch_nearby as osm_fetch_nearby
+from .places_osm import OsmUnavailable
+
+logger = logging.getLogger("travelguard.food")
 
 BUDGET_CLASS = {"₹": 1, "₹₹": 2, "₹₹₹": 3, "₹₹₹₹": 4}
 
@@ -38,7 +45,13 @@ def fetch_nearby(
     limit = max(1, min(int(limit), 50))
     radius_km = max(0.2, min(float(radius_km), 40.0))
 
-    results = [_with_distance(f, latitude, longitude) for f in DEMO_FOOD]
+    # LIVE-first: real OSM eateries win when the provider answers.
+    try:
+        live = osm_fetch_nearby(latitude, longitude, radius_m=int(radius_km * 1000), limit=limit)
+        results = [_with_distance(f, latitude, longitude) for f in live]
+    except OsmUnavailable as exc:
+        logger.warning("Live food unavailable (%s) — serving DEMO fallback", exc)
+        results = [_with_distance(f, latitude, longitude) for f in DEMO_FOOD]
     results = [f for f in results if f["distance_km"] <= radius_km]
 
     if vegetarian is True:

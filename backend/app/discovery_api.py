@@ -34,12 +34,21 @@ async def places_nearby(
         latitude, longitude, radius_km=radius_km, category=category,
         interest=interest, limit=limit,
     )
+    # Report the ACTUAL status of what was served, never a hardcoded claim.
+    statuses = {i.get("data_status", "DEMO") for i in items}
+    if statuses == {"LIVE"}:
+        resp_status, source = "LIVE", "openstreetmap_overpass"
+    elif "LIVE" in statuses:
+        resp_status, source = "MIXED", "openstreetmap_overpass+travelguard_demo_dataset"
+    else:
+        resp_status, source = "DEMO", "travelguard_demo_dataset"
     return {
         "origin": {"latitude": latitude, "longitude": longitude},
         "radius_km": radius_km,
         "count": len(items),
         "places": items,
-        "data_status": "DEMO",
+        "data_status": resp_status,
+        "data_source": source,
     }
 
 
@@ -67,12 +76,20 @@ async def food_nearby(
         latitude, longitude, radius_km=radius_km, vegetarian=vegetarian,
         budget=budget, cuisine=cuisine, limit=limit,
     )
+    statuses = {i.get("data_status", "DEMO") for i in items}
+    if statuses == {"LIVE"}:
+        resp_status, source = "LIVE", "openstreetmap_overpass"
+    elif "LIVE" in statuses:
+        resp_status, source = "MIXED", "openstreetmap_overpass+travelguard_demo_dataset"
+    else:
+        resp_status, source = "DEMO", "travelguard_demo_dataset"
     return {
         "origin": {"latitude": latitude, "longitude": longitude},
         "radius_km": radius_km,
         "count": len(items),
         "food": items,
-        "data_status": "DEMO",
+        "data_status": resp_status,
+        "data_source": source,
         "note": "Per-person spend estimates are ESTIMATED from price class.",
     }
 
@@ -90,12 +107,20 @@ async def services_nearby(
     items = services_provider.fetch_nearby(
         latitude, longitude, radius_km=radius_km, service_type=service_type, limit=limit,
     )
+    statuses = {i.get("data_status", "DEMO") for i in items}
+    if statuses == {"LIVE"}:
+        resp_status, source = "LIVE", "openstreetmap_overpass"
+    elif "LIVE" in statuses:
+        resp_status, source = "MIXED", "openstreetmap_overpass+travelguard_demo_dataset"
+    else:
+        resp_status, source = "DEMO", "travelguard_demo_dataset"
     return {
         "origin": {"latitude": latitude, "longitude": longitude},
         "radius_km": radius_km,
         "count": len(items),
         "services": items,
-        "data_status": "DEMO",
+        "data_status": resp_status,
+        "data_source": source,
         "note": "Phone numbers are omitted unless verifiably available — never fabricated.",
     }
 

@@ -107,6 +107,7 @@ export interface DayPlan {
     model_used: string
     model_version: string
     disclaimer: string
+    data_status?: DataStatus
   }
   ranking_model: string
   optimizer: string
@@ -119,7 +120,7 @@ export interface TouristLocation {
   latitude: number
   longitude: number
   name: string
-  source: 'browser' | 'search' | 'demo'
+  source: 'browser' | 'search' | 'demo' | 'unset'
 }
 
 /** Response shape of GET /api/safety/local (existing ML model, reused). */

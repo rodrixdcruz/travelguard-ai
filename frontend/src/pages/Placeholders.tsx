@@ -200,6 +200,50 @@ export function AiAssistant() {
   )
 }
 
+/** Data Mode setting — Live (default) vs Demo, persisted in LocationContext. */
+function DataModePanel() {
+  const { mode, setMode } = useTouristLocation()
+  return (
+    <Panel title="Data Mode">
+      <div className="space-y-2">
+        <label className="flex items-start gap-2.5 cursor-pointer">
+          <input
+            type="radio"
+            name="data-mode"
+            checked={mode === 'live'}
+            onChange={() => setMode('live')}
+            className="mt-1 accent-emerald-400"
+          />
+          <span>
+            <span className="text-sm font-semibold text-emerald-300">Live</span>{' '}
+            <span className="text-xs text-slate-500 block">
+              Default. Your actual location (browser GPS) or a place you select;
+              real OpenStreetMap places/food/services and Open-Meteo weather when
+              reachable. Anything that falls back stays clearly labeled.
+            </span>
+          </span>
+        </label>
+        <label className="flex items-start gap-2.5 cursor-pointer">
+          <input
+            type="radio"
+            name="data-mode"
+            checked={mode === 'demo'}
+            onChange={() => setMode('demo')}
+            className="mt-1 accent-sky-400"
+          />
+          <span>
+            <span className="text-sm font-semibold text-sky-300">Demo</span>{' '}
+            <span className="text-xs text-slate-500 block">
+              Explore the labeled Mumbai demonstration dataset. For testing only —
+              every item is shown with a DEMO badge.
+            </span>
+          </span>
+        </label>
+      </div>
+    </Panel>
+  )
+}
+
 function SystemStatusPanel() {
   const [info, setInfo] = useState<MlInfo | null>(null)
   useEffect(() => {
@@ -213,7 +257,9 @@ function SystemStatusPanel() {
   const rows: { name: string; status: string; on: boolean }[] = [
     { name: 'ML Safety Model', status: info ? `ACTIVE — ${info.safety_model.model_used} v${info.safety_model.model_version}` : 'ACTIVE', on: true },
     { name: 'Recommendation Model', status: info ? `ACTIVE — ${info.recommendation_model.model_used} v${info.recommendation_model.model_version}` : 'ACTIVE', on: true },
-    { name: 'Discovery Providers', status: 'DEMO — Mumbai demonstration dataset', on: false },
+    { name: 'Places / Food / Services', status: 'LIVE — OpenStreetMap Overpass (key-less) · DEMO fallback labeled', on: true },
+    { name: 'Weather (discovery + routes)', status: 'LIVE — Open-Meteo (key-less) · visibility ESTIMATED · DEMO fallback labeled', on: true },
+    { name: 'Transport / Tickets / Meals', status: 'ESTIMATED — modeled rates, not live fares', on: false },
     { name: 'Risk Engine (route rules)', status: 'ACTIVE — cross-check & fallback', on: true },
     { name: 'SOS', status: 'ACTIVE — verified ERSS 112', on: true },
   ]
@@ -249,6 +295,7 @@ export function Settings() {
         System status, the live ML pipeline demo, and the recommendation playground.
       </p>
       <div className="space-y-6">
+        <DataModePanel />
         <SystemStatusPanel />
         <IntelligencePanel />
         <MLPipelineDemo />
