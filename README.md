@@ -1,0 +1,173 @@
+# TravelGuard AI
+
+**Know the Risk Before You Reach It.**
+
+An AI-powered road-risk intelligence platform. Enter a journey — origin, destination,
+date and time — and TravelGuard analyzes the route before you travel: weather, road
+conditions, accident history and disruptions, segment by segment, with an explainable
+risk score and a safety briefing.
+
+> **Status: MVP + ML layer.** Runs fully in **DEMO MODE** with deterministic sample
+> data — no API keys required. The ML intelligence layer (contextual risk model +
+> recommendation engine) trains and runs on **synthetic demonstration data** and
+> falls back transparently to the rule engine when artifacts are absent.
+
+## ML intelligence layer
+
+Hybrid architecture — each layer does only its own job:
+
+```
+Data → Feature Engineering → ML prediction → Risk engine (cross-check/fallback)
+     → Itinerary optimizer → LLM explanation → Frontend
+```
+
+| Component | Model | Output |
+|---|---|---|
+| Contextual risk | `RandomForestRegressor` (safety_rf_v0_1) | Contextual Travel Risk Score 0–100 (not an accident probability) |
+| Place ranking | `GradientBoostingRegressor` (recommender_gb_v0_1) | preference score + reasons from actual features |
+| Itinerary | deterministic greedy feasibility optimizer | stops under time/budget/opening-hours/safety constraints |
+| Explanation | LLM (optional) or deterministic fallback | natural-language briefing only — never numbers |
+
+- 13 engineered features (`backend/app/ml/features.py`), training data generated
+deterministically (seed 42) into `data/ml/training_data.csv` — **synthetic, documented
+in `data/ml/README.md`**.
+- Journey analysis blends ML (60%) with the deterministic risk engine (40%); the
+response reports `intelligence_mode: random_forest | rule_based_demo` and the UI
+shows exactly which system produced a score. Missing artifacts → full rule-engine
+fallback, honestly labeled.
+
+### Train / evaluate / test
+
+```bash
+cd backend
+python -m app.ml.train        # generates data if missing, trains both models, prints real MAE/R²
+python -m app.ml.evaluate     # recompute metrics on a held-out split
+python -m pytest tests/ -q    # 20 tests: features, ordering, fallback, ranking, optimizer, API
+```
+
+Artifacts land in `models/` (git-ignored; reproducible). ML endpoints:
+`POST /api/ml/safety-predict`, `POST /api/ml/recommend`, `POST /api/ml/itinerary`,
+`GET /api/ml/info`. The Settings page hosts the live ML-pipeline demo and the
+recommendation playground for judges.
+
+---
+
+## What it does
+
+| Area | Details |
+|---|---|
+| **Journey analysis** | `POST /api/analyze-journey` — route, distance, duration, ETA |
+| **Segment-level risk** | Route split into 6 segments, each scored 0–100 (LOW / MODERATE / HIGH / CRITICAL) |
+| **Risk engine** | Deterministic weighted scoring: weather (30%), road (24%), accident (22%), disruption (14%), time (10%) |
+| **Risk map** | Dark Leaflet map, route colored by segment risk, click a segment for full details |
+| **Safety briefing** | AI-generated summary (LLM if `AI_API_KEY` is set, deterministic fallback otherwise — never fabricates) |
+| **AI assistant** | `POST /api/ai/chat` — ask "Why is this route risky?", "What is the biggest risk?", "What should I do?" |
+| **Alerts & actions** | Critical alerts per segment + prioritized recommendations, all derived from the computed data |
+
+## Tech stack
+
+- **Frontend:** React 18 + Vite + TypeScript + Tailwind CSS, React Leaflet (dark tiles)
+- **Backend:** Python FastAPI + Pydantic v2, SQLAlchemy 2.0 (optional PostgreSQL)
+- **AI:** OpenAI-compatible chat API (optional) with deterministic fallback
+- **Infra:** Docker Compose (frontend, backend, postgres)
+
+## Repository structure
+
+```
+travelguard-ai/
+├── frontend/            # React + Vite + TS + Tailwind
+│   └── src/
+│       ├── components/  # JourneyForm, ResultsView, RiskMap, briefing UI
+│       ├── pages/       # Dashboard, Plan Journey, Alerts, History, Assistant, Settings
+│       ├── map/         # RiskMap (Leaflet, risk-colored segments)
+│       ├── services/    # Central API client (single base-URL source)
+│       ├── context/     # Journey state (React context)
+│       └── types/       # TS types mirroring backend schemas
+├── backend/
+│   └── app/
+│       ├── main.py      # FastAPI endpoints
+│       ├── schemas.py   # Pydantic models
+│       ├── risk_engine.py   # Deterministic scoring (pure functions)
+│       ├── services.py  # Routing/weather/road/disruption providers (demo fallbacks)
+│       ├── demo_data.py # Deterministic demo dataset
+│       ├── ai.py        # LLM + deterministic briefing/chat
+│       ├── config.py    # Env-based settings
+│       └── database.py  # SQLAlchemy foundation (optional)
+├── docker-compose.yml   # frontend + backend + postgres
+└── .env.example         # All configuration, no secrets
+```
+
+## Local setup
+
+### Backend (FastAPI)
+
+```bash
+cd backend
+python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+uvicorn app.main:app --reload --port 8000
+```
+
+Verify: `curl http://localhost:8000/health` → `{"status": "ok", "service": "TravelGuard AI", ...}`
+
+### Frontend (Vite)
+
+```bash
+cd frontend
+npm install
+npm run dev        # http://localhost:5173
+```
+
+The frontend talks to `http://localhost:8000` by default. Override with
+`VITE_API_BASE_URL` in `frontend/.env.local` if needed.
+
+### Docker (all-in-one)
+
+```bash
+cp .env.example .env
+docker compose up --build
+```
+
+- Frontend: http://localhost:5173
+- Backend: http://localhost:8000/health
+- Postgres: localhost:5432 (travelguard/travelguard)
+
+## Environment variables
+
+Copy `.env.example` → `.env` (backend) and/or `frontend/.env.local`. Everything is
+optional except the basics — with no keys the app runs in demo mode.
+
+| Variable | Purpose |
+|---|---|
+| `APP_NAME`, `ENVIRONMENT`, `LOG_LEVEL` | Basic app config |
+| `DATABASE_URL` | PostgreSQL URL (SQLAlchemy). Unset = no DB writes |
+| `WEATHER_API_KEY` | Live weather provider |
+| `ROUTING_API_URL` | Live routing provider |
+| `ACCIDENT_API_KEY` | Accident-history provider |
+| `AI_API_KEY`, `AI_MODEL`, `AI_BASE_URL` | OpenAI-compatible LLM for briefings/chat |
+| `FRONTEND_URL` | CORS origin for the backend |
+| `VITE_API_BASE_URL` | Backend URL for the frontend |
+
+Never commit real secrets — `.env` is git-ignored (`.env.example` is not).
+
+## Demo routes
+
+Deterministic sample data includes realistic profiles for **Mumbai ↔ Pune**,
+**Delhi ↔ Jaipur**, **Bengaluru ↔ Mysuru**, **Bengaluru ↔ Chennai** (including ghat
+sections, monsoon disruptions, accident blackspots). Any other city pair gets a
+stable generated route, so every input works.
+
+## Development roadmap
+
+- [x] Foundation: repo, frontend shell, backend skeleton, health endpoint
+- [x] MVP: journey analysis, risk engine, segmented risk map, alerts, recommendations
+- [x] AI briefing + assistant with deterministic fallback
+- [x] ML layer: contextual risk model, recommendation engine, itinerary optimizer, pipeline demo
+- [ ] Live providers (weather / routing / accidents)
+- [ ] Alternative-route comparison
+- [ ] User accounts, saved journeys (SQLAlchemy models ready)
+- [ ] Live alerts & notifications, PostGIS spatial queries
+
+---
+
+*Demo data only — not a substitute for official traffic advisories.*

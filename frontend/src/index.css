@@ -1,0 +1,58 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    color-scheme: dark;
+  }
+  body {
+    @apply bg-ink-950 text-slate-200 antialiased;
+    background-image:
+      radial-gradient(ellipse 80% 50% at 20% -10%, rgba(34, 211, 238, 0.08), transparent),
+      radial-gradient(ellipse 60% 40% at 90% 10%, rgba(59, 130, 246, 0.07), transparent);
+    background-attachment: fixed;
+  }
+}
+
+@layer components {
+  .glass {
+    @apply bg-ink-800/60 border border-white/10 backdrop-blur-xl rounded-2xl;
+  }
+  .glass-hover {
+    @apply transition-colors hover:bg-ink-700/60 hover:border-cyan-400/30;
+  }
+  .btn-primary {
+    @apply w-full py-3.5 rounded-xl font-semibold tracking-wide uppercase text-sm
+      bg-gradient-to-r from-cyan-500 to-blue-600 text-white
+      shadow-glow hover:from-cyan-400 hover:to-blue-500
+      focus:outline-none focus:ring-2 focus:ring-cyan-400/50
+      disabled:opacity-40 disabled:cursor-not-allowed transition-all;
+  }
+  .field {
+    @apply w-full bg-ink-900/80 border border-white/10 rounded-xl px-4 py-3 text-sm
+      placeholder:text-slate-500 focus:outline-none focus:border-cyan-400/60
+      focus:ring-1 focus:ring-cyan-400/40 transition-colors;
+  }
+  .label {
+    @apply block text-xs font-medium uppercase tracking-wider text-slate-400 mb-1.5;
+  }
+}
+
+/* Leaflet dark tweaks */
+.leaflet-container {
+  background: #0a0f1a;
+  font-family: inherit;
+}
+.leaflet-control-attribution {
+  background: rgba(5, 8, 15, 0.7) !important;
+  color: #64748b !important;
+}
+.leaflet-control-attribution a {
+  color: #94a3b8 !important;
+}
+.leaflet-bar a {
+  background: #0f1626 !important;
+  color: #e2e8f0 !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}

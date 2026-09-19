@@ -1,0 +1,25 @@
+{
+  "model_version": "0.1-demo",
+  "dataset_type": "synthetic",
+  "features": [
+    "distance_km",
+    "estimated_cost",
+    "popularity",
+    "interest_match",
+    "available_time_hours",
+    "visit_duration_hours",
+    "fits_time",
+    "fits_budget",
+    "is_open",
+    "safety_context",
+    "category_match",
+    "budget_ratio"
+  ],
+  "metrics": {
+    "mae": 3.392,
+    "r2": 0.955,
+    "test_rows": 800,
+    "train_rows": 3200
+  },
+  "training_date": "2026-09-19T09:48:04.809837+00:00"
+}
