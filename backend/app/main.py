@@ -47,6 +47,9 @@ app = FastAPI(title=settings.app_name, version="0.1.0", lifespan=lifespan)
 app.include_router(ml_router)
 app.include_router(discovery_router)
 
+# CORS: explicit allowlist plus a pattern for Vercel preview deployments
+# (https://<project>-<hash>.vercel.app) so preview builds work before the
+# production domain exists. Production origin comes from FRONTEND_URL.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -54,6 +57,7 @@ app.add_middleware(
         "http://localhost:5173",
         "http://127.0.0.1:5173",
     ],
+    allow_origin_regex=r"^https://[a-z0-9-]+\.vercel\.app$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

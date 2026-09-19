@@ -157,6 +157,53 @@ Deterministic sample data includes realistic profiles for **Mumbai ↔ Pune**,
 sections, monsoon disruptions, accident blackspots). Any other city pair gets a
 stable generated route, so every input works.
 
+## Deployment (Render + Vercel)
+
+The MVP deploys as-is; only environment variables differ from local dev.
+
+### Backend → Render
+
+| Setting | Value |
+|---|---|
+| Root directory | `backend` |
+| Runtime | Docker (uses `backend/Dockerfile`) — or native Python 3.12 |
+| Build command (native) | `pip install -r requirements.txt` |
+| **Start command (native)** | `uvicorn app.main:app --host 0.0.0.0 --port $PORT` |
+| Health check path | `/health` |
+
+Environment variables:
+
+| Variable | Value |
+|---|---|
+| `FRONTEND_URL` | Your Vercel origin, e.g. `https://travelguard-ai.vercel.app` |
+| `ENVIRONMENT` | `production` |
+| `AI_API_KEY` *(optional)* | Enables live LLM briefings; omit for deterministic fallback |
+| `DATABASE_URL` *(optional)* | Postgres URL; omit for demo mode |
+
+Notes: the Docker CMD already binds `0.0.0.0:${PORT:-8000}`. Vercel preview URLs
+(`*.vercel.app`) are accepted by CORS automatically. **Model artifacts**
+(`models/*.joblib`) are git-ignored, so a fresh deploy runs the honest
+`rule_based_demo` fallback — train and commit the artifacts if you want the
+ML models active in production, or run training in the build command.
+
+### Frontend → Vercel
+
+| Setting | Value |
+|---|---|
+| Root directory | `frontend` |
+| Framework preset | Vite |
+| Build command | `npm run build` |
+| Output directory | `dist` |
+| SPA routing | via `frontend/vercel.json` (rewrites → `index.html`) |
+
+Environment variables:
+
+| Variable | Value |
+|---|---|
+| `VITE_API_BASE_URL` | Your Render backend URL, e.g. `https://travelguard-ai.onrender.com` |
+
+Map tiles use public Esri/OSM endpoints — no API key required.
+
 ## Development roadmap
 
 - [x] Foundation: repo, frontend shell, backend skeleton, health endpoint
