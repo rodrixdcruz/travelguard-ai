@@ -5,12 +5,13 @@ import logging
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy.orm import Session
 
-from . import ai, demo_data, risk_engine, services
+from . import ai, demo_data, risk_engine, services, store
 from .config import settings
-from .database import db_status, init_db
+from .database import SessionLocal, db_status, get_db, init_db
 from .discovery_api import router as discovery_router
 from .ml import predictor as ml_predictor
 from .ml_api import router as ml_router
@@ -75,6 +76,20 @@ async def health() -> dict:
         "database": db_status(),
         "time": datetime.utcnow().isoformat() + "Z",
     }
+
+
+# ── Recent journeys ─────────────────────────────────────────────────────
+
+@app.get("/api/journeys/recent")
+async def recent_journeys(limit: int = 10, db: Session | None = Depends(get_db)) -> dict:
+    """Latest analyzed journeys (empty list in demo deployments)."""
+    if db is None:
+        return {"journeys": [], "database": False}
+    try:
+        return {"journeys": store.recent_journeys(db, limit=min(max(limit, 1), 50)), "database": True}
+    except Exception:
+        logger.exception("Reading recent journeys failed")
+        raise HTTPException(status_code=503, detail="Database unavailable.")
 
 
 # ── Journey analysis ────────────────────────────────────────────────────
@@ -300,6 +315,17 @@ async def analyze_journey(req: AnalyzeRequest) -> AnalyzeResponse:
         if any(s.ml_model_used == "random_forest" for s in segments)
         else "rule_based_demo"
     )
+
+    # Best-effort persistence: store the analysis when a database is
+    # configured, never fail the response when it is not (or when the
+    # database is briefly unreachable).
+    if SessionLocal is not None:
+        try:
+            with SessionLocal() as db:
+                store.save_journey(db, journey, overall.score, overall.level, intelligence_mode)
+        except Exception:
+            logger.exception("Journey persistence failed (serving response anyway)")
+
     return AnalyzeResponse(
         journey=journey,
         overall_risk=overall,
