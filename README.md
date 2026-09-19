@@ -2,6 +2,11 @@
 
 **Know the Risk Before You Reach It.**
 
+> 🌐 **Live:** [travelguard-web.onrender.com](https://travelguard-web.onrender.com) ·
+> API: [travelguard-api.onrender.com/health](https://travelguard-api.onrender.com/health)
+> — runs in demo mode (no login needed); the free backend wakes in ~30–50s if it
+> has been idle.
+
 An AI-powered road-risk intelligence platform. Enter a journey — origin, destination,
 date and time — and TravelGuard analyzes the route before you travel: weather, road
 conditions, accident history and disruptions, segment by segment, with an explainable
