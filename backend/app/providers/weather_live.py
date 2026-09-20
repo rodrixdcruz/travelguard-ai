@@ -1,27 +1,53 @@
-"""Live weather via Open-Meteo (key-less) for the discovery + route layers.
+"""Live weather for the discovery + route layers.
 
-Current observed conditions for any coordinate on earth, mapped into the
-weather dict shape the risk engine already consumes. Visibility is derived
-from the observed WMO condition (Open-Meteo's current block has no visibility
-field) and is flagged as such — observed fields are LIVE, the derived one is
-ESTIMATED. Failures raise WeatherUnavailable → callers fall back to their
+Provider order, chosen for cloud deployments:
+1. MET Norway Locationforecast (key-less). Primary because it does NOT block
+   shared cloud-platform egress IPs — Open-Meteo answers Render/shared IPs
+   with 429 regardless of request rate (observed live; the same finding made
+   MausamBagha AI switch to MET Norway).
+2. Open-Meteo (key-less). Kept as fallback for environments where MET is
+   unreachable.
+
+Both are mapped into the same weather dict shape the risk engine already
+consumes; `data_status` is "LIVE" with the actual source in `data_source`.
+Visibility is not published by either provider's current block — it is
+derived from the observed condition and flagged `visibility_status:
+"ESTIMATED"`. Failures raise WeatherUnavailable → callers fall back to their
 deterministic demo weather with DEMO labels, never silent demo-as-live.
 """
 from __future__ import annotations
 
 import logging
 import os
+from datetime import datetime, timezone
 from typing import Any
 
 import httpx
 
 logger = logging.getLogger("travelguard.weather_live")
 
-OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast"
+MET_URL = "https://api.met.no/weatherapi/locationforecast/2.0/compact"
+# MET's terms require an identifying User-Agent with contact info.
 USER_AGENT = "TravelGuardAI/0.1 (https://github.com/rodrixdcruz/travelguard-ai)"
+OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast"
 TIMEOUT = httpx.Timeout(12.0, connect=5.0)
 
-# WMO weather interpretation codes → condition label + derived visibility (km)
+# MET symbol stems -> condition label + derived visibility (km).
+# Suffixes (_day/_night/_polartwilight) are stripped before lookup.
+MET_SYMBOLS = {
+    "clearsky": ("Clear", 10.0), "fair": ("Fair", 9.0),
+    "partlycloudy": ("Partly Cloudy", 8.0), "cloudy": ("Overcast", 6.0),
+    "lightrain": ("Light Rain", 4.5), "rain": ("Rain", 3.5), "heavyrain": ("Heavy Rain", 2.0),
+    "lightrainshowers": ("Rain Showers", 4.0), "rainshowers": ("Rain Showers", 3.0),
+    "heavyrainshowers": ("Heavy Showers", 1.8),
+    "lightsnow": ("Light Snow", 4.0), "snow": ("Snow", 2.5), "heavysnow": ("Heavy Snow", 1.0),
+    "lightsnowshowers": ("Snow Showers", 3.5), "snowshowers": ("Snow Showers", 2.5),
+    "heavysnowshowers": ("Heavy Snow Showers", 1.0),
+    "sleet": ("Sleet", 3.0), "sleetshowers": ("Sleet Showers", 2.5),
+    "fog": ("Fog", 1.0),
+}
+
+# Open-Meteo WMO codes → condition label + derived visibility (km)
 WMO = {
     0: ("Clear", 10.0), 1: ("Partly Cloudy", 9.0), 2: ("Partly Cloudy", 7.5),
     3: ("Overcast", 6.0), 45: ("Fog", 1.0), 48: ("Fog", 0.8),
@@ -38,26 +64,100 @@ def _live_disabled() -> bool:
 
 
 class WeatherUnavailable(Exception):
-    """Raised when the live weather provider cannot serve a request."""
+    """Raised when no live weather provider can serve a request."""
 
 
 def current_conditions(latitude: float, longitude: float) -> dict[str, Any]:
-    """Observed current weather for a coordinate (LIVE) + derived visibility (ESTIMATED)."""
+    """Observed current weather for a coordinate (LIVE) + derived visibility (ESTIMATED).
+
+    Tries MET Norway, then Open-Meteo; raises WeatherUnavailable when both fail.
+    """
+    if _live_disabled():
+        raise WeatherUnavailable("live providers disabled via TRAVELGUARD_DISABLE_LIVE_PROVIDERS")
+    errors: list[str] = []
+    for fetch in (_met_conditions, _open_meteo_conditions):
+        try:
+            return fetch(latitude, longitude)
+        except WeatherUnavailable as exc:
+            errors.append(str(exc))
+    logger.warning("All live weather providers unavailable (%s); caller should fall back to demo", "; ".join(errors))
+    raise WeatherUnavailable("; ".join(errors))
+
+
+def _met_conditions(latitude: float, longitude: float) -> dict[str, Any]:
+    """MET Norway Locationforecast compact → the app's weather dict."""
+    try:
+        resp = httpx.get(
+            MET_URL, params={"lat": latitude, "lon": longitude},
+            headers={"User-Agent": USER_AGENT}, timeout=TIMEOUT,
+        )
+        resp.raise_for_status()
+        payload = resp.json()
+    except Exception as exc:
+        raise WeatherUnavailable(f"met-norway: {exc}") from exc
+
+    try:
+        timeseries = payload["properties"]["timeseries"]
+        # Entry closest to (not after) now UTC — MET starts the series at the current hour.
+        now = datetime.now(timezone.utc)
+        entry = min(
+            timeseries,
+            key=lambda e: abs((datetime.fromisoformat(str(e["time"]).replace("Z", "+00:00")) - now).total_seconds()),
+        )
+        details = entry["data"]["instant"]["details"]
+    except (KeyError, TypeError, ValueError, IndexError) as exc:
+        raise WeatherUnavailable(f"met-norway: malformed response ({exc})") from exc
+
+    symbol = None
+    precip_mm = 0.0
+    data = entry.get("data", {})
+    for window in ("next_1_hours", "next_6_hours", "next_12_hours"):
+        section = data.get(window)
+        if not isinstance(section, dict):
+            continue
+        w_details = section.get("details")
+        if isinstance(w_details, dict) and w_details.get("precipitation_amount") is not None:
+            precip_mm = float(w_details["precipitation_amount"])
+        summary = section.get("summary")
+        if isinstance(summary, dict) and summary.get("symbol_code"):
+            symbol = str(summary["symbol_code"])
+        if symbol or precip_mm:
+            break
+
+    stem = (symbol or "").split("_", 1)[0]
+    if "thunder" in stem:
+        cond, vis = "Thunderstorm", 2.0
+    else:
+        cond, vis = MET_SYMBOLS.get(stem, ("Unknown", 6.0))
+
+    wind_ms = details.get("wind_speed")
+    return {
+        "condition": cond,
+        "precip_mm": round(precip_mm, 1),
+        # Derived from the observed symbol, not observed directly:
+        "visibility_km": vis,
+        "visibility_status": "ESTIMATED",
+        "wind_kph": round(float(wind_ms) * 3.6, 1) if wind_ms is not None else 0.0,
+        "temp_c": float(details.get("air_temperature", 0.0)),
+        "data_source": "met-norway",
+        "data_status": "LIVE",
+    }
+
+
+def _open_meteo_conditions(latitude: float, longitude: float) -> dict[str, Any]:
+    """Open-Meteo current block → the app's weather dict (fallback provider)."""
     params = {
         "latitude": latitude,
         "longitude": longitude,
         "current": "temperature_2m,precipitation,weather_code,wind_speed_10m",
         "wind_speed_unit": "kmh",
     }
-    if _live_disabled():
-        raise WeatherUnavailable("live providers disabled via TRAVELGUARD_DISABLE_LIVE_PROVIDERS")
     try:
         resp = httpx.get(OPEN_METEO_URL, params=params, headers={"User-Agent": USER_AGENT}, timeout=TIMEOUT)
         resp.raise_for_status()
         cur = resp.json()["current"]
     except Exception as exc:
-        logger.warning("Open-Meteo unavailable (%s); caller should fall back to demo", exc)
-        raise WeatherUnavailable(str(exc)) from exc
+        raise WeatherUnavailable(f"open-meteo: {exc}") from exc
 
     code = int(cur.get("weather_code", 0))
     cond, vis = WMO.get(code, ("Unknown", 6.0))
