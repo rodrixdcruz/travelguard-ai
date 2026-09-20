@@ -4,23 +4,44 @@
 
 > 🌐 **Live:** [travelguard-web.onrender.com](https://travelguard-web.onrender.com) ·
 > API: [travelguard-api.onrender.com/health](https://travelguard-api.onrender.com/health)
-> — runs in demo mode (no login needed); the free backend wakes in ~30–50s if it
-> has been idle.
+> — no login needed; defaults to **LIVE MODE** (real GPS location, key-less live
+> providers for geocoding/places/weather) with every item labeled LIVE, ESTIMATED
+> or DEMO. The free backend wakes in ~30–50s if it has been idle.
 
 An AI-powered road-risk intelligence platform. Enter a journey — origin, destination,
 date and time — and TravelGuard analyzes the route before you travel: weather, road
 conditions, accident history and disruptions, segment by segment, with an explainable
 risk score and a safety briefing.
 
-> **Status: MVP + ML layer.** Runs fully in **DEMO MODE** with deterministic sample
-> data — no API keys required. The ML intelligence layer (contextual risk model +
+> **Status: MVP + ML layer.** The ML intelligence layer (contextual risk model +
 > recommendation engine) trains and runs on **synthetic demonstration data** and
-> falls back transparently to the rule engine when artifacts are absent.
+> falls back transparently to the rule engine when artifacts are absent. Live
+> providers (OpenStreetMap geocoding & places, Open-Meteo weather) are key-less;
+> when one is unreachable the app says so instead of faking it. Demo Mode remains
+> available as an explicit, labeled toggle.
 >
 > **Persistence:** when `DATABASE_URL` is set (the live deployment uses Neon
 > PostgreSQL), every analyzed journey is stored and served by
 > `GET /api/journeys/recent` — writes are best-effort and never fail an analysis.
 > Without a database the API behaves exactly as pure demo mode.
+
+## Screenshots
+
+**Journey planner** — any route, analyzed before you travel: distance, duration,
+ETA, an explainable risk score and the key factors behind it (Nagpur → Mumbai
+shown, with the Recent Journeys panel beside the form).
+
+![Journey planner](docs/screenshots/journey-planner.png)
+
+**Interactive risk map** — the route split into color-coded segments; click any
+segment to inspect its weather, road condition and safety guidance.
+
+![Risk map](docs/screenshots/risk-map.png)
+
+**Recent journeys** — every analysis is persisted (Neon PostgreSQL on the live
+deployment) and can be re-run against current conditions in one click.
+
+![Recent journeys](docs/screenshots/recent-journeys.png)
 
 ## ML intelligence layer
 
