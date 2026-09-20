@@ -1,4 +1,4 @@
-import type { DayPlan, FoodPlace, LocalSafety, LocalService, Place, TouristLocation } from '../types/discovery'
+import type { DayPlan, FoodPlace, GeoSearchResponse, LocalSafety, LocalService, Place, TouristLocation } from '../types/discovery'
 import { apiConfig } from './api'
 
 async function get<T>(path: string): Promise<T> {
@@ -98,23 +98,47 @@ export function fetchLocalSafety(latitude: number, longitude: number): Promise<L
   return get(`/api/safety/local?latitude=${latitude}&longitude=${longitude}`)
 }
 
-/** Browser geolocation with a 8s timeout; rejects when unavailable or denied. */
-export function browserLocation(): Promise<TouristLocation> {
-  return new Promise((resolve, reject) => {
+/**
+ * Browser geolocation for an explicit "use my location" click.
+ * Fresh fix (no cache) named via the backend's reverse geocoder when it can
+ * be — "Nagpur, Maharashtra" instead of an anonymous "Your location".
+ * Rejects when unavailable or denied; never resolves to a demo city.
+ */
+export async function browserLocation(): Promise<TouristLocation> {
+  const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
     if (!navigator.geolocation) {
       reject(new Error('Geolocation unavailable in this browser'))
       return
     }
     navigator.geolocation.getCurrentPosition(
-      (pos) =>
-        resolve({
-          latitude: pos.coords.latitude,
-          longitude: pos.coords.longitude,
-          name: 'Your location',
-          source: 'browser',
-        }),
+      resolve,
       (err) => reject(new Error(err.message || 'Location permission denied')),
-      { timeout: 8000, maximumAge: 60000 },
+      { timeout: 8000, maximumAge: 0, enableHighAccuracy: true },
     )
   })
+  const base: TouristLocation = {
+    latitude: pos.coords.latitude,
+    longitude: pos.coords.longitude,
+    name: 'Your location',
+    source: 'browser',
+  }
+  const name = await reverseName(base.latitude, base.longitude)
+  return name ? { ...base, name } : base
+}
+
+/** Place-name search via the backend's Nominatim proxy (real coordinates). */
+export function searchPlaces(query: string): Promise<GeoSearchResponse> {
+  return get(`/api/geo/search?q=${encodeURIComponent(query)}`)
+}
+
+/** Resolve a coordinate to a human place name (best-effort, may return null). */
+export async function reverseName(latitude: number, longitude: number): Promise<string | null> {
+  try {
+    const r = await get<{ name: string | null; data_status: string }>(
+      `/api/geo/reverse?latitude=${latitude}&longitude=${longitude}`,
+    )
+    return r.name
+  } catch {
+    return null
+  }
 }

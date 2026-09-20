@@ -145,7 +145,7 @@ export interface SosInfo {
   note: string
 }
 
-/** Recognizable demo locations for users without geolocation. */
+/** Recognizable demo locations for users without geolocation (Demo Mode only). */
 export const DEMO_LOCATIONS: TouristLocation[] = [
   { latitude: 18.9220, longitude: 72.8347, name: 'Gateway of India, Colaba', source: 'demo' },
   { latitude: 18.9398, longitude: 72.8355, name: 'CSMT, Fort', source: 'demo' },
@@ -153,3 +153,20 @@ export const DEMO_LOCATIONS: TouristLocation[] = [
   { latitude: 19.1075, longitude: 72.8263, name: 'Juhu Beach', source: 'demo' },
   { latitude: 19.0170, longitude: 72.8298, name: 'Siddhivinayak, Dadar', source: 'demo' },
 ]
+
+/** Result of GET /api/geo/search — real coordinates from OpenStreetMap. */
+export interface GeoSearchResult {
+  name: string
+  short_name: string
+  latitude: number
+  longitude: number
+  type: string
+}
+
+/** Response shape of GET /api/geo/search. */
+export interface GeoSearchResponse {
+  results: GeoSearchResult[]
+  count: number
+  data_status: string
+  data_source: string
+}

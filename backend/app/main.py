@@ -79,6 +79,41 @@ async def health() -> dict:
     }
 
 
+# ── Geocoding (honest location entry) ──────────────────────────────────
+
+@app.get("/api/geo/search")
+async def geo_search(q: str, limit: int = 6) -> dict:
+    """Place-name → real coordinates via OpenStreetMap Nominatim (key-less).
+
+    Empty results = no match or provider unavailable; the frontend says so
+    instead of guessing. Never returns invented coordinates.
+    """
+    from .providers import geocode  # local import keeps startup light
+
+    if len(q.strip()) < 2:
+        raise HTTPException(status_code=422, detail="Query must be at least 2 characters.")
+    results = await asyncio.to_thread(geocode.search, q, min(max(limit, 1), 10))
+    return {
+        "results": results,
+        "count": len(results),
+        "data_status": "LIVE" if results else "UNAVAILABLE",
+        "data_source": "OpenStreetMap Nominatim",
+    }
+
+
+@app.get("/api/geo/reverse")
+async def geo_reverse(latitude: float, longitude: float) -> dict:
+    """Coordinate → human place name, so GPS fixes can be labeled honestly."""
+    from .providers import geocode
+
+    name = await asyncio.to_thread(geocode.reverse, latitude, longitude)
+    return {
+        "name": name,
+        "data_status": "LIVE" if name else "UNAVAILABLE",
+        "data_source": "OpenStreetMap Nominatim",
+    }
+
+
 # ── Recent journeys ─────────────────────────────────────────────────────
 
 @app.get("/api/journeys/recent")
@@ -269,8 +304,12 @@ async def analyze_journey(req: AnalyzeRequest) -> AnalyzeResponse:
     if req.origin.strip().lower() == req.destination.strip().lower():
         raise HTTPException(status_code=422, detail="Origin and destination must differ.")
 
-    origin = await asyncio.to_thread(services.resolve_point, req.origin)
-    destination = await asyncio.to_thread(services.resolve_point, req.destination)
+    try:
+        origin = await asyncio.to_thread(services.resolve_point, req.origin)
+        destination = await asyncio.to_thread(services.resolve_point, req.destination)
+    except ValueError as exc:
+        # Unresolvable place: honest 422 (never invented coordinates).
+        raise HTTPException(status_code=422, detail=str(exc))
     path, is_known = await asyncio.to_thread(services.resolve_route, origin, destination)
 
     try:

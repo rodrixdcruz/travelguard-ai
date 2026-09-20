@@ -5,6 +5,7 @@ import RiskMap from '../map/RiskMap'
 import { DataBadge, OpeningChip } from '../components/DataStatusBadge'
 import { fetchNearbyPlaces, fetchNearbyServices, fetchLocalSafety } from '../services/discovery'
 import { browserLocation } from '../services/discovery'
+import LocationSearch from '../components/LocationSearch'
 import { mlInfo } from '../services/api'
 import { DEMO_LOCATIONS, type Place } from '../types/discovery'
 import { useTouristLocation } from '../context/LocationContext'
@@ -120,23 +121,27 @@ export default function Dashboard() {
         {/* Where are you? */}
         <div className="mt-6 max-w-md mx-auto">
           <p className="text-xs uppercase tracking-widest text-slate-500 mb-2">Where are you?</p>
-          <div className="flex gap-2">
-            <button onClick={useMyLocation} disabled={locating} className="btn-primary flex-1 !py-2.5 !text-xs">
-              {locating ? 'Locating…' : '📍 Use My Location'}
-            </button>
-            <select
-              className="field !py-2.5 !text-xs flex-1"
-              value={DEMO_LOCATIONS.some((d) => d.name === location.name) ? location.name : ''}
-              onChange={(e) => {
-                const found = DEMO_LOCATIONS.find((d) => d.name === e.target.value)
-                if (found) setLocation(found)
-              }}
-            >
-              <option value="" disabled>Search a Place…</option>
-              {DEMO_LOCATIONS.map((d) => (
-                <option key={d.name} value={d.name}>{d.name}</option>
-              ))}
-            </select>
+          <div className="space-y-2">
+            <LocationSearch />
+            <div className="flex gap-2">
+              <button onClick={useMyLocation} disabled={locating} className="btn-primary flex-1 !py-2.5 !text-xs">
+                {locating ? 'Locating…' : '📍 Use My Location'}
+              </button>
+              <select
+                className="field !py-2.5 !text-xs flex-1"
+                title="Labeled demo places (Demo Mode dataset)"
+                value={DEMO_LOCATIONS.some((d) => d.name === location.name) ? location.name : ''}
+                onChange={(e) => {
+                  const found = DEMO_LOCATIONS.find((d) => d.name === e.target.value)
+                  if (found) setLocation(found)
+                }}
+              >
+                <option value="" disabled>Demo places…</option>
+                {DEMO_LOCATIONS.map((d) => (
+                  <option key={d.name} value={d.name}>{d.name}</option>
+                ))}
+              </select>
+            </div>
           </div>
           {locMsg && (
             <p className="mt-2 text-[11px] text-amber-300 bg-amber-400/10 border border-amber-400/20 rounded-lg px-2.5 py-1.5">

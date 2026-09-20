@@ -34,6 +34,22 @@ CITY_COORDS: dict[str, Coordinate] = {
     "surat": Coordinate(lat=21.1702, lon=72.8311),
     "goa": Coordinate(lat=15.2993, lon=74.1240),
     "panaji": Coordinate(lat=15.4909, lon=73.8278),
+    "nagpur": Coordinate(lat=21.1458, lon=79.0882),
+    "indore": Coordinate(lat=22.7196, lon=75.8577),
+    "bhopal": Coordinate(lat=23.2599, lon=77.4126),
+    "lucknow": Coordinate(lat=26.8467, lon=80.9462),
+    "kanpur": Coordinate(lat=26.4499, lon=80.3319),
+    "patna": Coordinate(lat=25.5941, lon=85.1376),
+    "kochi": Coordinate(lat=9.9312, lon=76.2673),
+    "coimbatore": Coordinate(lat=11.0168, lon=76.9558),
+    "visakhapatnam": Coordinate(lat=17.6868, lon=83.2185),
+    "varanasi": Coordinate(lat=25.3176, lon=82.9739),
+    "amritsar": Coordinate(lat=31.6340, lon=74.8723),
+    "chandigarh": Coordinate(lat=30.7333, lon=76.7794),
+    "shimla": Coordinate(lat=31.1048, lon=77.1734),
+    "manali": Coordinate(lat=32.2432, lon=77.1892),
+    "udaipur": Coordinate(lat=24.5854, lon=73.7125),
+    "rishikesh": Coordinate(lat=30.0869, lon=78.2676),
 }
 
 # Named polyline waypoints (lat, lon) for headline demo routes.

@@ -37,7 +37,10 @@ export interface LocationState {
 
 const Ctx = createContext<LocationState | null>(null)
 
-const LOC_STORAGE_KEY = 'tg_location_v1'
+// v2: the v1 key could hold a pre-live-mode DEMO location (Mumbai), which
+// suppressed geolocation forever — "stuck in Mumbai". Bumping the key makes
+// every existing visitor re-resolve honestly (GPS prompt or explicit choice).
+const LOC_STORAGE_KEY = 'tg_location_v2'
 const MODE_STORAGE_KEY = 'tg_data_mode_v1'
 
 function initialMode(): DataMode {

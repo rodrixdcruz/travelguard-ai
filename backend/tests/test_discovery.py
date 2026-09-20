@@ -1,10 +1,6 @@
 """Discovery layer tests — filtering, sorting, planner, costs, data honesty."""
 from __future__ import annotations
 
-import pytest
-from fastapi.testclient import TestClient
-
-from app.main import app
 from app.providers import food as food_provider
 from app.providers import places as places_provider
 from app.providers import services as services_provider
@@ -12,11 +8,6 @@ from app.providers import tickets as tickets_provider
 from app.providers.transport import estimate as transport_estimate
 
 GATEWAY = (18.9220, 72.8347)
-
-
-@pytest.fixture(scope="module")
-def client() -> TestClient:
-    return TestClient(app)
 
 
 # ── Places provider ─────────────────────────────────────────────────────

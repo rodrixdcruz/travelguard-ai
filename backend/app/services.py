@@ -24,15 +24,27 @@ except ImportError:  # pragma: no cover
 # ── Routing ─────────────────────────────────────────────────────────────
 
 def resolve_point(name: str) -> RoutePoint:
+    """Resolve a place name to real coordinates.
+
+    Order: built-in city table → live Nominatim geocoding. A name that
+    resolves to neither raises ValueError — fabricating hash-based pseudo
+    coordinates (the old behavior) could silently place an unknown city
+    hundreds of km from reality, which is a safety lie in a safety app.
+    """
     coord = demo_data.lookup_city(name)
-    if coord is None:
-        # Unknown city: derive a stable pseudo-coordinate from the name so the
-        # demo still renders a route without any network call.
-        h = hashlib.sha256(name.strip().lower().encode()).digest()
-        lat = 8.0 + (h[0] / 255.0) * 28.0        # 8..36 N (India-ish band)
-        lon = 68.0 + (h[1] / 255.0) * 30.0       # 68..98 E
-        coord = Coordinate(lat=round(lat, 4), lon=round(lon, 4))
-    return RoutePoint(name=name.strip().title(), lat=coord.lat, lon=coord.lon)
+    if coord is not None:
+        return RoutePoint(name=name.strip().title(), lat=coord.lat, lon=coord.lon)
+
+    from .providers import geocode  # local import avoids import cycle
+
+    results = geocode.search(name, limit=1)
+    if results:
+        hit = results[0]
+        return RoutePoint(name=hit["short_name"], lat=round(hit["latitude"], 4), lon=round(hit["longitude"], 4))
+    raise ValueError(
+        f"Could not resolve '{name.strip()}' to a real location. "
+        "Check the spelling or pick a suggested city."
+    )
 
 
 def resolve_route(origin: RoutePoint, destination: RoutePoint) -> tuple[list[Coordinate], bool]:
