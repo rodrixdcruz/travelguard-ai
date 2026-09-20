@@ -353,7 +353,16 @@ async def analyze_journey(req: AnalyzeRequest) -> AnalyzeResponse:
         },
     )
 
-    data_mode = "demo" if not (settings.weather_api_key or settings.routing_api_url) else "live+demo"
+    # Derive the honest mode from what the providers actually returned,
+    # not from legacy config: route weather carries data_status LIVE
+    # (Open-Meteo) or DEMO (fallback) on every segment.
+    _statuses = {str(s.weather.get("data_status", "")).upper() for s in segments}
+    if "LIVE" in _statuses and _statuses & {"DEMO", "ESTIMATED"}:
+        data_mode = "live+demo"
+    elif "LIVE" in _statuses:
+        data_mode = "live"
+    else:
+        data_mode = "demo"
     intelligence_mode = (
         "random_forest"
         if any(s.ml_model_used == "random_forest" for s in segments)

@@ -26,7 +26,7 @@ const WANT_TO_DO = [
 ]
 
 export default function Dashboard() {
-  const { location, setLocation, setSosOpen, needsLocation } = useTouristLocation()
+  const { location, setLocation, setSosOpen, needsLocation, mode } = useTouristLocation()
   const [places, setPlaces] = useState<Place[] | null>(null)
   const [services, setServices] = useState<LocalService[] | null>(null)
   const [safety, setSafety] = useState<LocalSafety | null>(null)
@@ -127,20 +127,22 @@ export default function Dashboard() {
               <button onClick={useMyLocation} disabled={locating} className="btn-primary flex-1 !py-2.5 !text-xs">
                 {locating ? 'Locating…' : '📍 Use My Location'}
               </button>
-              <select
-                className="field !py-2.5 !text-xs flex-1"
-                title="Labeled demo places (Demo Mode dataset)"
-                value={DEMO_LOCATIONS.some((d) => d.name === location.name) ? location.name : ''}
-                onChange={(e) => {
-                  const found = DEMO_LOCATIONS.find((d) => d.name === e.target.value)
-                  if (found) setLocation(found)
-                }}
-              >
-                <option value="" disabled>Demo places…</option>
-                {DEMO_LOCATIONS.map((d) => (
-                  <option key={d.name} value={d.name}>{d.name}</option>
-                ))}
-              </select>
+              {mode === 'demo' && (
+                <select
+                  className="field !py-2.5 !text-xs flex-1"
+                  title="Labeled demo places (Demo Mode dataset)"
+                  value={DEMO_LOCATIONS.some((d) => d.name === location.name) ? location.name : ''}
+                  onChange={(e) => {
+                    const found = DEMO_LOCATIONS.find((d) => d.name === e.target.value)
+                    if (found) setLocation(found)
+                  }}
+                >
+                  <option value="" disabled>Demo places…</option>
+                  {DEMO_LOCATIONS.map((d) => (
+                    <option key={d.name} value={d.name}>{d.name}</option>
+                  ))}
+                </select>
+              )}
             </div>
           </div>
           {locMsg && (

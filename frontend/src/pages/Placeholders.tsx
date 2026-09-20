@@ -254,14 +254,14 @@ function SystemStatusPanel() {
     }
   }, [])
 
-  const rows: { name: string; status: string; on: boolean }[] = [
-    { name: 'ML Safety Model', status: info ? `ACTIVE — ${info.safety_model.model_used} v${info.safety_model.model_version}` : 'ACTIVE', on: true },
-    { name: 'Recommendation Model', status: info ? `ACTIVE — ${info.recommendation_model.model_used} v${info.recommendation_model.model_version}` : 'ACTIVE', on: true },
-    { name: 'Places / Food / Services', status: 'LIVE — OpenStreetMap Overpass (key-less) · DEMO fallback labeled', on: true },
-    { name: 'Weather (discovery + routes)', status: 'LIVE — Open-Meteo (key-less) · visibility ESTIMATED · DEMO fallback labeled', on: true },
-    { name: 'Transport / Tickets / Meals', status: 'ESTIMATED — modeled rates, not live fares', on: false },
-    { name: 'Risk Engine (route rules)', status: 'ACTIVE — cross-check & fallback', on: true },
-    { name: 'SOS', status: 'ACTIVE — verified ERSS 112', on: true },
+  const rows: { name: string; status: string; badge: string; kind: 'active' | 'estimated' }[] = [
+    { name: 'ML Safety Model', status: info ? `ACTIVE — ${info.safety_model.model_used} v${info.safety_model.model_version}` : 'ACTIVE', badge: 'ACTIVE', kind: 'active' },
+    { name: 'Recommendation Model', status: info ? `ACTIVE — ${info.recommendation_model.model_used} v${info.recommendation_model.model_version}` : 'ACTIVE', badge: 'ACTIVE', kind: 'active' },
+    { name: 'Places / Food / Services', status: 'LIVE — OpenStreetMap Overpass (key-less) · DEMO fallback labeled', badge: 'ACTIVE', kind: 'active' },
+    { name: 'Weather (discovery + routes)', status: 'LIVE — Open-Meteo (key-less) · visibility ESTIMATED · DEMO fallback labeled', badge: 'ACTIVE', kind: 'active' },
+    { name: 'Transport / Tickets / Meals', status: 'ESTIMATED — modeled rates, not live fares', badge: 'ESTIMATED', kind: 'estimated' },
+    { name: 'Risk Engine (route rules)', status: 'ACTIVE — cross-check & fallback', badge: 'ACTIVE', kind: 'active' },
+    { name: 'SOS', status: 'ACTIVE — verified ERSS 112', badge: 'ACTIVE', kind: 'active' },
   ]
   return (
     <Panel title="System status">
@@ -274,11 +274,11 @@ function SystemStatusPanel() {
             </div>
             <span
               className={`inline-flex items-center gap-1.5 text-[10px] uppercase tracking-widest ${
-                r.on ? 'text-emerald-300' : 'text-sky-300'
+                r.kind === 'active' ? 'text-emerald-300' : 'text-sky-300'
               }`}
             >
-              <span className={`w-2 h-2 rounded-full ${r.on ? 'bg-emerald-400' : 'bg-sky-400'}`} />
-              {r.on ? 'ACTIVE' : 'DEMO'}
+              <span className={`w-2 h-2 rounded-full ${r.kind === 'active' ? 'bg-emerald-400' : 'bg-sky-400'}`} />
+              {r.badge}
             </span>
           </li>
         ))}
