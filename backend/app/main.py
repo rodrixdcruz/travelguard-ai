@@ -1,6 +1,7 @@
 """TravelGuard AI — FastAPI application."""
 from __future__ import annotations
 
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
@@ -268,16 +269,18 @@ async def analyze_journey(req: AnalyzeRequest) -> AnalyzeResponse:
     if req.origin.strip().lower() == req.destination.strip().lower():
         raise HTTPException(status_code=422, detail="Origin and destination must differ.")
 
-    origin = services.resolve_point(req.origin)
-    destination = services.resolve_point(req.destination)
-    path, is_known = services.resolve_route(origin, destination)
+    origin = await asyncio.to_thread(services.resolve_point, req.origin)
+    destination = await asyncio.to_thread(services.resolve_point, req.destination)
+    path, is_known = await asyncio.to_thread(services.resolve_route, origin, destination)
 
     try:
         travel_dt = datetime.strptime(f"{req.date} {req.time}", "%Y-%m-%d %H:%M")
     except ValueError:
         raise HTTPException(status_code=422, detail="date must be YYYY-MM-DD and time must be HH:MM.")
 
-    route_weather = await services.fetch_route_weather(
+    # weather_live does synchronous HTTP (Open-Meteo) — keep it off the loop.
+    route_weather = await asyncio.to_thread(
+        services.fetch_route_weather_sync,
         req.origin, req.destination, origin_coord=origin, destination_coord=destination,
     )
     segments = _build_segments(path, is_known, travel_dt, route_weather)

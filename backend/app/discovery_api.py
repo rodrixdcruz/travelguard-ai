@@ -4,6 +4,7 @@ All responses carry data_status so the UI can label every record honestly.
 """
 from __future__ import annotations
 
+import asyncio
 from typing import Any, Optional
 
 from fastapi import APIRouter, HTTPException, Query
@@ -30,7 +31,11 @@ async def places_nearby(
     interest: Optional[str] = Query(None),
     limit: int = Query(20, ge=1, le=50),
 ) -> dict[str, Any]:
-    items = places_provider.fetch_nearby(
+    # Providers do synchronous HTTP (OSM Overpass, demo dataset). Run them
+    # in a threadpool so a slow upstream can never stall the event loop —
+    # a blocked loop starves /health and Render evicts the instance.
+    items = await asyncio.to_thread(
+        places_provider.fetch_nearby,
         latitude, longitude, radius_km=radius_km, category=category,
         interest=interest, limit=limit,
     )
@@ -72,7 +77,8 @@ async def food_nearby(
     cuisine: Optional[str] = Query(None),
     limit: int = Query(20, ge=1, le=50),
 ) -> dict[str, Any]:
-    items = food_provider.fetch_nearby(
+    items = await asyncio.to_thread(
+        food_provider.fetch_nearby,
         latitude, longitude, radius_km=radius_km, vegetarian=vegetarian,
         budget=budget, cuisine=cuisine, limit=limit,
     )
@@ -104,7 +110,8 @@ async def services_nearby(
     service_type: Optional[str] = Query(None),
     limit: int = Query(20, ge=1, le=50),
 ) -> dict[str, Any]:
-    items = services_provider.fetch_nearby(
+    items = await asyncio.to_thread(
+        services_provider.fetch_nearby,
         latitude, longitude, radius_km=radius_km, service_type=service_type, limit=limit,
     )
     statuses = {i.get("data_status", "DEMO") for i in items}
@@ -138,7 +145,7 @@ async def sos_info(
     nearest: dict[str, Any] = {}
     if latitude is not None and longitude is not None:
         for stype in ("hospital", "police", "pharmacy"):
-            item = services_provider.nearest_by_type(latitude, longitude, stype)
+            item = await asyncio.to_thread(services_provider.nearest_by_type, latitude, longitude, stype)
             if item:
                 nearest[stype] = item
     return {
@@ -163,7 +170,7 @@ async def safety_local(
     from datetime import datetime
 
     h = hour if hour is not None else datetime.now().hour
-    prediction = local_safety_context(latitude, longitude, h)
+    prediction = await asyncio.to_thread(local_safety_context, latitude, longitude, h)
     return {
         **prediction,
         "disclaimer": "Decision-support score, not accident probability. Trained on synthetic demonstration data.",
@@ -189,6 +196,6 @@ async def transport_modes() -> dict[str, Any]:
 async def plan_day_endpoint(req: DayPlanRequest) -> dict[str, Any]:
     """ML ranking → optimizer → costed itinerary + safety context."""
     try:
-        return plan_day(req)
+        return await asyncio.to_thread(plan_day, req)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc

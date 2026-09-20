@@ -86,16 +86,12 @@ def _demo_weather_for_key(key: str) -> dict[str, Any]:
     }
 
 
-async def fetch_route_weather(origin_name: str, destination_name: str, *,
-                              origin_coord: Coordinate | None = None,
-                              destination_coord: Coordinate | None = None) -> dict[str, Any]:
-    """LIVE-first route weather.
-
-    With route midpoint coordinates, real conditions come from Open-Meteo
-    (key-less, data_status="LIVE"; visibility is ESTIMATED and flagged).
-    Without coordinates — or when the provider is unreachable — the
-    deterministic demo weather is returned and labeled "DEMO" so nothing
-    silently poses as live data.
+def fetch_route_weather_sync(origin_name: str, destination_name: str, *,
+                             origin_coord: Coordinate | None = None,
+                             destination_coord: Coordinate | None = None) -> dict[str, Any]:
+    """Synchronous body of fetch_route_weather — callers inside async
+    endpoints must run this via asyncio.to_thread so the blocking HTTP call
+    (Open-Meteo) never stalls the event loop.
     """
     if origin_coord is not None and destination_coord is not None:
         mid_lat = (origin_coord.lat + destination_coord.lat) / 2.0
@@ -109,6 +105,16 @@ async def fetch_route_weather(origin_name: str, destination_name: str, *,
     demo["data_source"] = "travelguard_demo_weather"
     demo["data_status"] = "DEMO"
     return demo
+
+
+async def fetch_route_weather(origin_name: str, destination_name: str, *,
+                              origin_coord: Coordinate | None = None,
+                              destination_coord: Coordinate | None = None) -> dict[str, Any]:
+    """Async convenience wrapper kept for existing callers/tests."""
+    return fetch_route_weather_sync(
+        origin_name, destination_name,
+        origin_coord=origin_coord, destination_coord=destination_coord,
+    )
 
 
 # ── Per-segment conditions (deterministic, context-aware) ───────────────
