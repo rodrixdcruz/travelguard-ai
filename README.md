@@ -1,3 +1,7 @@
+<div align="center">
+<img src="docs/social-preview.png" alt="TravelGuard AI — AI road-trip safety copilot: plan any journey and get a segment-by-segment road-risk briefing" width="100%">
+</div>
+
 # TravelGuard AI
 
 **Know the Risk Before You Reach It.**
