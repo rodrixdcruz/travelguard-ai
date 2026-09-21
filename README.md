@@ -20,9 +20,11 @@ risk score and a safety briefing.
 > **Status: MVP + ML layer.** The ML intelligence layer (contextual risk model +
 > recommendation engine) trains and runs on **synthetic demonstration data** and
 > falls back transparently to the rule engine when artifacts are absent. Live
-> providers (OpenStreetMap geocoding & places, Open-Meteo weather) are key-less;
-> when one is unreachable the app says so instead of faking it. Demo Mode remains
-> available as an explicit, labeled toggle.
+> providers are all key-less: weather uses **MET Norway Locationforecast**
+> (primary — chosen because it does not throttle shared cloud egress IPs) with
+> **Open-Meteo** as fallback, and geocoding/places use **OpenStreetMap**
+> (Nominatim + Overpass). When a provider is unreachable the app says so
+> instead of faking it. Demo Mode remains available as an explicit, labeled toggle.
 >
 > **Persistence:** when `DATABASE_URL` is set (the live deployment uses Neon
 > PostgreSQL), every analyzed journey is stored and served by
@@ -170,13 +172,14 @@ docker compose up --build
 ## Environment variables
 
 Copy `.env.example` → `.env` (backend) and/or `frontend/.env.local`. Everything is
-optional except the basics — with no keys the app runs in demo mode.
+optional — with no keys the app still runs in **LIVE MODE** on key-less providers
+(MET Norway weather → Open-Meteo fallback, OpenStreetMap geocoding/places).
 
 | Variable | Purpose |
 |---|---|
 | `APP_NAME`, `ENVIRONMENT`, `LOG_LEVEL` | Basic app config |
 | `DATABASE_URL` | PostgreSQL URL (SQLAlchemy). Unset = no DB writes |
-| `WEATHER_API_KEY` | Live weather provider |
+| `WEATHER_API_KEY` | Optional extra weather provider (overrides the key-less MET Norway → Open-Meteo chain if wired) |
 | `ROUTING_API_URL` | Live routing provider |
 | `ACCIDENT_API_KEY` | Accident-history provider |
 | `AI_API_KEY`, `AI_MODEL`, `AI_BASE_URL` | OpenAI-compatible LLM for briefings/chat |
