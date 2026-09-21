@@ -16,6 +16,10 @@ import httpx
 
 from .places_osm import OsmUnavailable, overpass_query
 
+# OSM usage policy: descriptive UA with contact URL (same as the other
+# OSM-facing providers).
+USER_AGENT = "TravelGuardAI/0.1 (https://github.com/rodrixdcruz/travelguard-ai)"
+
 logger = logging.getLogger("travelguard.services_osm")
 
 # OSM amenity → TravelGuard service_type
