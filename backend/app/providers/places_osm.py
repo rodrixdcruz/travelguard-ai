@@ -43,7 +43,7 @@ BREAKER_WINDOW_SECONDS = 60.0
 _last_all_fail: list[float] = []  # [monotonic ts] — empty = closed
 
 
-def overpass_query(query: str) -> list[dict[str, Any]]:
+def overpass_query(query: str, timeout: httpx.Timeout | None = None) -> list[dict[str, Any]]:
     """Run one Overpass query across mirrors; raise OsmUnavailable if all fail."""
     import time as _time
 
@@ -59,7 +59,7 @@ def overpass_query(query: str) -> list[dict[str, Any]]:
                 mirror,
                 data={"data": query},
                 headers={"User-Agent": USER_AGENT},
-                timeout=TIMEOUT,
+                timeout=timeout or TIMEOUT,
             )
             resp.raise_for_status()
             _last_all_fail.clear()
@@ -228,8 +228,16 @@ def fetch_nearby(
         # nearby instead of the area's actually-famous places.
         body = "".join(f"nwr({around}){t};" for t in GENERAL_TAG_FILTERS)
         out_limit = 80  # wide pool; ranking trims to `limit`
-    query = f"[out:json][timeout:14];({body})out center {out_limit};"
-    elements = overpass_query(query)
+    if category:
+        query = f"[out:json][timeout:12];({body})out center {out_limit};"
+        elements = overpass_query(query)
+    else:
+        # The union needs real server-side compute time — the client must
+        # outlive the query's own [timeout] or every mirror dies prematurely
+        # (observed: 8s client kill → all mirrors "fail" → honest-but-empty
+        # DEMO fallback on production even though Overpass was healthy).
+        query = f"[out:json][timeout:18];({body})out center {out_limit};"
+        elements = overpass_query(query, timeout=httpx.Timeout(25.0, connect=5.0))
 
     seen: set[str] = set()
     out: list[dict[str, Any]] = []
