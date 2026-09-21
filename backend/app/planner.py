@@ -142,7 +142,12 @@ def plan_day(req: DayPlanRequest) -> dict[str, Any]:
         matched = [p for p in candidates if wanted & {t.lower() for t in p["tags"]}]
         candidates = matched or candidates  # fall back to all if interest too narrow
     if not candidates:
-        raise ValueError("No places found near this location in the current dataset")
+        raise ValueError(
+            "No places available near this location right now — live OpenStreetMap "
+            "is unreachable from this network and the offline dataset only covers "
+            "demo cities (Mumbai area). Try again shortly, pick a Demo Mode city, "
+            "or choose a different location."
+        )
 
     # ── 2. ML ranking (existing recommendation model — reused, not duplicated) ──
     opt_places = [_to_optimizer_place(p) for p in candidates]
