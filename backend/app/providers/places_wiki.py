@@ -63,6 +63,14 @@ class WikiUnavailable(Exception):
     """Raised when the Wikipedia provider cannot serve a request."""
 
 
+def _live_disabled() -> bool:
+    # Same CI kill switch the other live providers honor — the test suite
+    # must make zero external HTTP calls.
+    import os
+
+    return os.getenv("TRAVELGUARD_DISABLE_LIVE_PROVIDERS", "") == "1"
+
+
 def fetch_notable(
     latitude: float,
     longitude: float,
@@ -74,6 +82,8 @@ def fetch_notable(
     Raises WikiUnavailable on network/API failure. Returns [] when the area
     genuinely has no notable places (callers decide the fallback).
     """
+    if _live_disabled():
+        raise WikiUnavailable("live providers disabled via TRAVELGUARD_DISABLE_LIVE_PROVIDERS")
     radius_m = int(min(max(radius_m, 500), MAX_RADIUS_M))
     try:
         resp = httpx.get(

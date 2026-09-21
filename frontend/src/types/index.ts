@@ -74,6 +74,7 @@ export interface AnalyzeResponse {
   briefing: string
   data_mode: string
   intelligence_mode: string
+  provider_summary?: { status: string; sources: string[]; line: string }
   generated_at: string
 }
 

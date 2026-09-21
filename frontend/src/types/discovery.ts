@@ -114,6 +114,7 @@ export interface DayPlan {
   skipped: { name: string; why: string }[]
   weather: Record<string, unknown>
   data_status: DataStatus
+  provider_summary?: import('../components/ProviderSummaryLine').ProviderSummary
 }
 
 export interface TouristLocation {

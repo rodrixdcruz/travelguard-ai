@@ -47,6 +47,15 @@ export default function ResultsView({ mapHeight = 'h-[420px]' }: Props) {
               {analysis.data_mode === 'demo' ? 'Demo data' : analysis.data_mode}
             </span>
           </div>
+          {analysis.provider_summary?.line && (
+            <p className="mt-2 text-[11px] text-slate-500">
+              <span className={`font-semibold uppercase tracking-wider ${analysis.provider_summary.status === 'LIVE' ? 'text-emerald-300' : analysis.provider_summary.status === 'MIXED' ? 'text-cyan-300' : 'text-slate-400'}`}>
+                {analysis.provider_summary.status}
+              </span>
+              <span className="mx-1.5 text-slate-600">·</span>
+              {analysis.provider_summary.line}
+            </p>
+          )}
           <dl className="mt-5 grid grid-cols-3 gap-4">
             <Stat label="Distance" value={`${Math.round(journey.distance_km)} km`} />
             <Stat label="Duration" value={formatDuration(journey.duration_min)} />

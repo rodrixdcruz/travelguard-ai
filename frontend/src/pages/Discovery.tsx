@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import Panel from '../components/Panel'
 import RiskMap from '../map/RiskMap'
 import { DataBadge, OpeningChip } from '../components/DataStatusBadge'
+import { ProviderSummaryLine } from '../components/ProviderSummaryLine'
 import { fetchLocalSafety, fetchNearbyFood, fetchNearbyServices, planDay } from '../services/discovery'
 import { useTouristLocation } from '../context/LocationContext'
 import { DEMO_LOCATIONS, type DayPlan, type LocalSafety, type PlanItem } from '../types/discovery'
@@ -354,6 +355,7 @@ export function DayPlanner() {
           {plan && (
             <div className="grid md:grid-cols-2 gap-6">
               <Panel title="Timeline">
+                <ProviderSummaryLine summary={plan.provider_summary} />
                 <ul>
                   {plan.itinerary.items.map((item, i) => (
                     <ItineraryItem key={i} item={item} />

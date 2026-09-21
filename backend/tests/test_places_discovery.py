@@ -1,6 +1,15 @@
 """Famous-first general discovery in places_osm.fetch_nearby."""
+import pytest
+
 from app.providers import places_osm
 from app.providers.places_osm import OsmUnavailable, _normalize, fetch_nearby
+
+
+@pytest.fixture(autouse=True)
+def _allow_mocked_overpass(monkeypatch):
+    """These tests stub overpass_query entirely (zero real HTTP), so the CI
+    kill switch must be cleared for fetch_nearby to reach the mocked layer."""
+    monkeypatch.delenv("TRAVELGUARD_DISABLE_LIVE_PROVIDERS", raising=False)
 
 
 def _el(eid, name, tags, lat=21.15, lon=79.09):
@@ -11,14 +20,17 @@ def test_general_query_unions_all_tag_classes():
     seen = {}
     fake = {"elements": []}
 
-    def fake_overpass(query):
+    def fake_overpass(query, timeout=None):
         seen["q"] = query
         return fake["elements"]
 
     orig = places_osm.overpass_query
     places_osm.overpass_query = fake_overpass
     try:
-        fetch_nearby(21.1458, 79.0882, radius_m=10000, limit=20)
+        try:
+            fetch_nearby(21.1458, 79.0882, radius_m=10000, limit=20)
+        except OsmUnavailable:
+            pass  # empty pool raises — fine, we only assert the query
     finally:
         places_osm.overpass_query = orig
     q = seen["q"]
@@ -33,7 +45,7 @@ def test_general_query_unions_all_tag_classes():
 def test_category_query_uses_single_tag():
     seen = {}
 
-    def fake_overpass(query):
+    def fake_overpass(query, timeout=None):
         seen["q"] = query
         return []
 
@@ -47,7 +59,7 @@ def test_category_query_uses_single_tag():
     finally:
         places_osm.overpass_query = orig
     assert '["tourism"="museum"]["name"]' in seen["q"]
-    assert ");out center 10;" in seen["q"]
+    assert "out center 10;" in seen["q"]
 
 
 def test_ranking_famous_first():
@@ -59,7 +71,7 @@ def test_ranking_famous_first():
         _el(5, "Sitabuldi Fort", {"historic": "fort"}, lat=21.15, lon=79.09),
     ]
 
-    def fake_overpass(query):
+    def fake_overpass(query, timeout=None):
         return els
 
     orig = places_osm.overpass_query

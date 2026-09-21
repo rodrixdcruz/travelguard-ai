@@ -97,6 +97,7 @@ class AnalyzeResponse(BaseModel):
     briefing: str
     data_mode: str = "demo"                  # demo | live
     intelligence_mode: str = "rule_based_demo"  # random_forest | rule_based_demo
+    provider_summary: Optional[dict[str, Any]] = None  # {status, sources, line} — what actually served this
     generated_at: datetime
 
 

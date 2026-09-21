@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import RiskMap from '../map/RiskMap'
 import { DataBadge, OpeningChip } from './DataStatusBadge'
 import Panel from './Panel'
+import { ProviderSummaryLine, type ProviderSummary } from './ProviderSummaryLine'
 import { browserLocation, fetchNearbyFood, fetchNearbyPlaces, fetchNearbyServices } from '../services/discovery'
 import LocationSearch from './LocationSearch'
 import { DEMO_LOCATIONS, type FoodPlace, type LocalService, type Place } from '../types/discovery'
@@ -33,6 +34,7 @@ export default function NearMe() {
   const [selected, setSelected] = useState<string | null>(null)
   const [locating, setLocating] = useState(false)
   const [statuses, setStatuses] = useState<{ places: string; food: string; services: string } | null>(null)
+  const [summary, setSummary] = useState<ProviderSummary | null>(null)
 
   useEffect(() => {
     // Live mode, no location yet: nothing to discover (never silently Mumbai).
@@ -56,6 +58,16 @@ export default function NearMe() {
         setFood(f.food)
         setServices(s.services)
         setStatuses({ places: p.data_status, food: f.data_status, services: s.data_status })
+        // One merged provenance line across the three discovery responses.
+        const all: string[] = [...p.provider_summary.sources, ...f.provider_summary.sources, ...s.provider_summary.sources]
+        const anyLive = [p, f, s].some((r) => r.provider_summary.status === 'LIVE')
+        const anyDemo = [p, f, s].some((r) => r.provider_summary.status === 'DEMO')
+        setSummary({
+          status: anyLive && anyDemo ? 'MIXED' : anyLive ? 'LIVE' : 'DEMO',
+          sources: [...new Set(all)],
+          line: `places ${p.provider_summary.status.toLowerCase()} · food ${f.provider_summary.status.toLowerCase()} · services ${s.provider_summary.status.toLowerCase()} — ` +
+            [...new Set(all)].join(' + '),
+        })
       })
       .catch((e) => !cancelled && setLocError(e instanceof Error ? e.message : 'Discovery failed'))
       .finally(() => !cancelled && setLoading(false))
@@ -243,14 +255,8 @@ export default function NearMe() {
 
         <p className="text-[11px] text-slate-500">
           {visibleMarkers.length} nearby result{visibleMarkers.length === 1 ? '' : 's'}
-          {statuses
-            ? ` · data: ${[
-                statuses.places !== 'LIVE' ? `places ${statuses.places}` : null,
-                statuses.food !== 'LIVE' ? `food ${statuses.food}` : null,
-                statuses.services !== 'LIVE' ? `services ${statuses.services}` : null,
-              ].filter(Boolean).join(', ') || 'LIVE (OpenStreetMap)'}`
-            : ''}
         </p>
+        <ProviderSummaryLine summary={summary} />
 
         <div className="flex flex-wrap gap-1.5">
           {FILTERS.map((f) => (

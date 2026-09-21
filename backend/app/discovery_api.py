@@ -15,6 +15,7 @@ from .providers import food as food_provider
 from .providers import places as places_provider
 from .providers import services as services_provider
 from .providers.transport import RATES
+from .provider_summary import provider_summary
 from .schemas import DayPlanRequest
 
 router = APIRouter(prefix="/api", tags=["discovery"])
@@ -40,23 +41,15 @@ async def places_nearby(
         interest=interest, limit=limit,
     )
     # Report the ACTUAL status of what was served, never a hardcoded claim.
-    statuses = {i.get("data_status", "DEMO") for i in items}
-    sources = {i.get("data_source", "") for i in items} - {""}
-    if statuses == {"LIVE"}:
-        resp_status = "LIVE"
-        source = "+".join(sorted(sources)) or "live_providers"
-    elif "LIVE" in statuses:
-        resp_status = "MIXED"
-        source = "+".join(sorted(sources)) + "+travelguard_demo_dataset"
-    else:
-        resp_status, source = "DEMO", "travelguard_demo_dataset"
+    summary = provider_summary(items)
     return {
         "origin": {"latitude": latitude, "longitude": longitude},
         "radius_km": radius_km,
         "count": len(items),
         "places": items,
-        "data_status": resp_status,
-        "data_source": source,
+        "data_status": summary["status"],
+        "data_source": "+".join(sorted({i.get("data_source", "") for i in items} - {""})) or "travelguard_demo_dataset",
+        "provider_summary": summary,
     }
 
 
@@ -85,20 +78,15 @@ async def food_nearby(
         latitude, longitude, radius_km=radius_km, vegetarian=vegetarian,
         budget=budget, cuisine=cuisine, limit=limit,
     )
-    statuses = {i.get("data_status", "DEMO") for i in items}
-    if statuses == {"LIVE"}:
-        resp_status, source = "LIVE", "openstreetmap_overpass"
-    elif "LIVE" in statuses:
-        resp_status, source = "MIXED", "openstreetmap_overpass+travelguard_demo_dataset"
-    else:
-        resp_status, source = "DEMO", "travelguard_demo_dataset"
+    summary = provider_summary(items)
     return {
         "origin": {"latitude": latitude, "longitude": longitude},
         "radius_km": radius_km,
         "count": len(items),
         "food": items,
-        "data_status": resp_status,
-        "data_source": source,
+        "data_status": summary["status"],
+        "data_source": "+".join(sorted({i.get("data_source", "") for i in items} - {""})) or "travelguard_demo_dataset",
+        "provider_summary": summary,
         "note": "Per-person spend estimates are ESTIMATED from price class.",
     }
 
@@ -117,20 +105,15 @@ async def services_nearby(
         services_provider.fetch_nearby,
         latitude, longitude, radius_km=radius_km, service_type=service_type, limit=limit,
     )
-    statuses = {i.get("data_status", "DEMO") for i in items}
-    if statuses == {"LIVE"}:
-        resp_status, source = "LIVE", "openstreetmap_overpass"
-    elif "LIVE" in statuses:
-        resp_status, source = "MIXED", "openstreetmap_overpass+travelguard_demo_dataset"
-    else:
-        resp_status, source = "DEMO", "travelguard_demo_dataset"
+    summary = provider_summary(items)
     return {
         "origin": {"latitude": latitude, "longitude": longitude},
         "radius_km": radius_km,
         "count": len(items),
         "services": items,
-        "data_status": resp_status,
-        "data_source": source,
+        "data_status": summary["status"],
+        "data_source": "+".join(sorted({i.get("data_source", "") for i in items} - {""})) or "travelguard_demo_dataset",
+        "provider_summary": summary,
         "note": "Phone numbers are omitted unless verifiably available — never fabricated.",
     }
 

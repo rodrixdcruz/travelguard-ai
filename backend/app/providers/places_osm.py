@@ -160,6 +160,15 @@ def _normalize(el: dict[str, Any], lat: float, lon: float) -> dict[str, Any] | N
     name = tags.get("name")
     if not name:
         return None
+    # Flood filter: generic commerce POIs are not discovery material — even
+    # if a query shape ever returns them (belt-and-braces with the union
+    # query, which already excludes these tag classes).
+    if tags.get("shop") and not (tags.get("tourism") or tags.get("historic")):
+        return None
+    if tags.get("amenity") in ("restaurant", "cafe", "fast_food", "bar", "pub") and not (
+        tags.get("tourism") or tags.get("historic")
+    ):
+        return None
     if el.get("type") == "node":
         plat, plon = el.get("lat"), el.get("lon")
     else:

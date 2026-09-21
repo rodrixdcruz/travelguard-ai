@@ -1,4 +1,5 @@
 import type { DayPlan, FoodPlace, GeoSearchResponse, LocalSafety, LocalService, Place, TouristLocation } from '../types/discovery'
+import type { ProviderSummary } from '../components/ProviderSummaryLine'
 import { apiConfig } from './api'
 
 async function get<T>(path: string): Promise<T> {
@@ -30,7 +31,7 @@ export function fetchNearbyPlaces(opts: {
   category?: string
   interest?: string
   limit?: number
-}): Promise<{ places: Place[]; count: number; data_status: string }> {
+}): Promise<{ places: Place[]; count: number; data_status: string; provider_summary: ProviderSummary }> {
   const q = new URLSearchParams({
     latitude: String(opts.latitude),
     longitude: String(opts.longitude),
@@ -50,7 +51,7 @@ export function fetchNearbyFood(opts: {
   budget?: number
   cuisine?: string
   limit?: number
-}): Promise<{ food: FoodPlace[]; count: number; data_status: string }> {
+}): Promise<{ food: FoodPlace[]; count: number; data_status: string; provider_summary: ProviderSummary }> {
   const q = new URLSearchParams({
     latitude: String(opts.latitude),
     longitude: String(opts.longitude),
@@ -69,7 +70,7 @@ export function fetchNearbyServices(opts: {
   radius_km?: number
   service_type?: string
   limit?: number
-}): Promise<{ services: LocalService[]; count: number; data_status: string }> {
+}): Promise<{ services: LocalService[]; count: number; data_status: string; provider_summary: ProviderSummary }> {
   const q = new URLSearchParams({
     latitude: String(opts.latitude),
     longitude: String(opts.longitude),

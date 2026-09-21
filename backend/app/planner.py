@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from .ml import predictor as ml_predictor
+from .provider_summary import provider_summary
 from .providers import food as food_provider
 from .providers import places as places_provider
 from .providers import services as services_provider
@@ -329,13 +330,17 @@ def plan_day(req: DayPlanRequest) -> dict[str, Any]:
         "optimizer": plan["optimizer"],
         "skipped": plan.get("skipped", []),
         "weather": wx,
-        # Report the ACTUAL mix of what was served: attractions carry their
-        # real per-item provenance; costs stay ESTIMATED (modeled rates);
-        # the whole response is DEMO only if every attraction was.
+        # Report the ACTUAL mix of what was served, derived from the
+        # attractions' real per-item provenance (costs keep their own
+        # ESTIMATED labels in line_status).
         "data_status": (
             "LIVE"
             if any(i.get("data_status") == "LIVE" for i in items if i["type"] == "attraction")
             else "DEMO"
+        ),
+        "provider_summary": provider_summary(
+            [i for i in items if i["type"] == "attraction"],
+            fallback_line="TravelGuard demo dataset (live discovery unavailable)",
         ),
     }
 

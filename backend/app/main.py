@@ -14,6 +14,7 @@ from . import ai, demo_data, risk_engine, services, store
 from .config import settings
 from .database import SessionLocal, db_status, get_db, init_db
 from .discovery_api import router as discovery_router
+from .provider_summary import provider_summary
 from .ml import predictor as ml_predictor
 from .ml_api import router as ml_router
 from .schemas import (
@@ -98,6 +99,11 @@ async def geo_search(q: str, limit: int = 6) -> dict:
         "count": len(results),
         "data_status": "LIVE" if results else "UNAVAILABLE",
         "data_source": "OpenStreetMap Nominatim",
+        "provider_summary": {
+            "status": "LIVE" if results else "UNAVAILABLE",
+            "sources": ["OSM Nominatim"] if results else [],
+            "line": "LIVE from OSM Nominatim" if results else "Geocoder unavailable — no results served",
+        },
     }
 
 
@@ -369,6 +375,15 @@ async def analyze_journey(req: AnalyzeRequest) -> AnalyzeResponse:
         else "rule_based_demo"
     )
 
+    # One honest provider line for the UI: derived from the weather dicts
+    # each segment actually carries (LIVE names its real source; DEMO means
+    # the fallback dataset served the request).
+    _weather_rows = [dict(s.weather, data_source=str(s.weather.get("data_source", ""))) for s in segments]
+    prov_summary = provider_summary(
+        _weather_rows,
+        fallback_line="TravelGuard demo weather dataset",
+    )
+
     # Best-effort persistence: store the analysis when a database is
     # configured, never fail the response when it is not (or when the
     # database is briefly unreachable).
@@ -388,6 +403,7 @@ async def analyze_journey(req: AnalyzeRequest) -> AnalyzeResponse:
         briefing="",
         data_mode=data_mode,
         intelligence_mode=intelligence_mode,
+        provider_summary=prov_summary,
         generated_at=datetime.utcnow(),
     )
 
