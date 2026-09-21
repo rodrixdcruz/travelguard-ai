@@ -1,15 +1,19 @@
 """Live places provider — OpenStreetMap Overpass API (key-less).
 
-Fetches real nearby POIs (tourism/amenity/leisure/shop) for any coordinate
-on earth. Chosen because it is key-less AND reachable from cloud egress.
-Per OSM usage policy, requests carry a descriptive User-Agent with a
-contact URL.
+Fetches real nearby POIs (tourism/historic/leisure/amenity) for any
+coordinate on earth. Chosen because it is key-less AND reachable from
+cloud egress. Per OSM usage policy, requests carry a descriptive
+User-Agent with a contact URL.
 
-Normalized into the same dict shape as the demo dataset so the API and UI
-layers stay untouched; data_status is "LIVE" with the OSM element id as the
-place id. Any failure (network, throttling, empty area) raises
-OsmUnavailable and callers fall back to the demo dataset with DEMO labels —
-demo data is never presented as LIVE.
+General discovery unions every interesting tag class (a single-tag query
+misses most famous places — they are often `historic` or `leisure=park`,
+not `tourism`) and ranks the pool by notability: places carrying a
+wikidata/wikipedia tag come first, then strongly-tagged attractions, then
+everything else. Normalized into the same dict shape as the demo dataset
+so the API and UI layers stay untouched; data_status is "LIVE" with the
+OSM element id as the place id. Any failure (network, throttling, empty
+area) raises OsmUnavailable and callers fall back to the demo dataset
+with DEMO labels — demo data is never presented as LIVE.
 """
 from __future__ import annotations
 
@@ -66,6 +70,7 @@ def overpass_query(query: str) -> list[dict[str, Any]]:
     _last_all_fail[:] = [_time.monotonic()]
     raise OsmUnavailable(str(last))
 
+
 # OSM tag filters per UI category, applied together with an `around` filter.
 CATEGORY_MAP = {
     "attraction": '["tourism"]["name"]',
@@ -79,6 +84,18 @@ CATEGORY_MAP = {
     "entertainment": '["amenity"~"cinema|theatre|arts_centre"]["name"]',
     "experience": '["tourism"]["name"]',
 }
+
+# General discovery (no category requested) unions every interesting tag —
+# a single-tag query misses most famous places (they are often tagged
+# `historic` or `leisure=park`, not `tourism`). Value-regexes keep the
+# union to 4 statements (each `around` statement costs a spatial-index
+# lookup); generic shop is excluded — it floods results with tiny stores.
+GENERAL_TAG_FILTERS = (
+    '["tourism"]["name"]',
+    '["historic"]["name"]',
+    '["leisure"~"^(park|nature_reserve)$"]["name"]',
+    '["amenity"~"^(place_of_worship|marketplace|cinema|theatre|arts_centre)$"]["name"]',
+)
 
 
 class OsmUnavailable(Exception):
@@ -150,6 +167,15 @@ def _normalize(el: dict[str, Any], lat: float, lon: float) -> dict[str, Any] | N
         except ValueError:
             rating = None
 
+    # Notability signals from OSM metadata — used to sort famous places up.
+    notability = 0
+    if "wikidata" in tags or "wikipedia" in tags:
+        notability += 3  # strong signal: the place has an encyclopedia article
+    if tourism in ("attraction", "museum", "zoo", "gallery") or historic:
+        notability += 2
+    if tags.get("description"):
+        notability += 1
+
     return {
         "id": f"osm-{el.get('type', 'n')}-{el.get('id')}",
         "name": name[:120],
@@ -163,7 +189,13 @@ def _normalize(el: dict[str, Any], lat: float, lon: float) -> dict[str, Any] | N
         "tags": kinds[:4],
         "data_source": "openstreetmap_overpass",
         "data_status": "LIVE",
+        "_notability": notability,
     }
+
+
+def _notability_sort_key(p: dict[str, Any]) -> tuple:
+    """Famous-first, then by name for stable output."""
+    return (-p.get("_notability", 0), p.get("name", ""))
 
 
 def _live_disabled() -> bool:
@@ -177,15 +209,26 @@ def fetch_nearby(
     category: str | None = None,
     limit: int = 20,
 ) -> list[dict[str, Any]]:
-    """Real POIs around a coordinate, sorted by distance. Raises OsmUnavailable on failure."""
+    """Real POIs around a coordinate. Raises OsmUnavailable on failure.
+
+    With a category: nearest-first within that category. Without one: a
+    union query across all interesting tag classes, ranked famous-first
+    (wikidata presence → attraction tags → described places).
+    """
     if _live_disabled():
         raise OsmUnavailable("live providers disabled via TRAVELGUARD_DISABLE_LIVE_PROVIDERS")
-    tag = CATEGORY_MAP.get(category or "", CATEGORY_MAP["attraction"])
-    query = (
-        "[out:json][timeout:12];"
-        f"nwr(around:{int(radius_m)},{latitude:.6f},{longitude:.6f}){tag};"
-        f"out center {max(1, min(int(limit), 50))};"
-    )
+    around = f"around:{int(radius_m)},{latitude:.6f},{longitude:.6f}"
+    if category:
+        tag = CATEGORY_MAP.get(category, CATEGORY_MAP["attraction"])
+        body = f"nwr({around}){tag};"
+        out_limit = max(1, min(int(limit), 50))
+    else:
+        # Union across all interesting tags, then rank by notability below —
+        # otherwise the answer is whatever few `tourism` nodes happen to sit
+        # nearby instead of the area's actually-famous places.
+        body = "".join(f"nwr({around}){t};" for t in GENERAL_TAG_FILTERS)
+        out_limit = 80  # wide pool; ranking trims to `limit`
+    query = f"[out:json][timeout:14];({body})out center {out_limit};"
     elements = overpass_query(query)
 
     seen: set[str] = set()
@@ -197,4 +240,8 @@ def fetch_nearby(
             out.append(norm)
     if not out:
         raise OsmUnavailable("no named results in this area")
-    return out
+    if not category:
+        out.sort(key=_notability_sort_key)
+    for p in out:
+        p.pop("_notability", None)  # internal ranking field — never exposed
+    return out[: max(1, min(int(limit), 50))]
