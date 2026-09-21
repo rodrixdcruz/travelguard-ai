@@ -1,10 +1,14 @@
 """Places provider — nearby discovery with distance and category filtering.
 
-LIVE-first: when the key-less OpenStreetMap Overpass provider answers, real
-POIs are returned with data_status="LIVE". Any failure (network, throttle,
-empty area) falls back to the Mumbai demo dataset, whose items keep their
-honest data_status="DEMO" — callers and the UI surface the difference via
-the per-item labels and the response-level `provider` fields.
+LIVE-first with a two-tier live chain for general (category-less) discovery:
+1. **Wikipedia geosearch** — places notable enough to have an encyclopedia
+   article (the "famous places" users expect: forts, museums, landmarks).
+   Fast, global, key-less, and immune to Overpass capacity problems.
+2. **OpenStreetMap Overpass union query** — broader POI coverage when the
+   wiki layer fails or adds nothing.
+Category-filtered queries go straight to OSM (wiki has no category tags).
+Any failure falls through to the Mumbai demo dataset, whose items keep
+their honest data_status="DEMO" — never silent demo-as-live.
 """
 from __future__ import annotations
 
@@ -14,6 +18,7 @@ from typing import Any, Optional
 
 from .demo_mumbai import DEMO_PLACES
 from .places_osm import OsmUnavailable, fetch_nearby as osm_fetch_nearby
+from .places_wiki import WikiUnavailable, fetch_notable as wiki_fetch_notable
 
 logger = logging.getLogger("travelguard.places")
 
@@ -60,7 +65,22 @@ def fetch_nearby(
     limit = max(1, min(int(limit), 50))
     radius_km = max(0.2, min(float(radius_km), 60.0))
 
-    # LIVE-first: real OSM results win whenever the provider answers.
+    # LIVE-first, two tiers: notable places (Wikipedia) then broad POIs (OSM).
+    if not category:
+        try:
+            wiki = wiki_fetch_notable(
+                latitude,
+                longitude,
+                radius_m=int(radius_km * 1000),
+                limit=limit,
+            )
+            if wiki:
+                results = [_with_distance(p, latitude, longitude) for p in wiki]
+                results.sort(key=lambda p: p["distance_km"])
+                return results[:limit]
+        except WikiUnavailable as exc:
+            logger.warning("Wikipedia places unavailable (%s) — trying OSM", exc)
+
     try:
         live = osm_fetch_nearby(
             latitude,

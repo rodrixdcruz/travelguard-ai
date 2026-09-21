@@ -41,10 +41,13 @@ async def places_nearby(
     )
     # Report the ACTUAL status of what was served, never a hardcoded claim.
     statuses = {i.get("data_status", "DEMO") for i in items}
+    sources = {i.get("data_source", "") for i in items} - {""}
     if statuses == {"LIVE"}:
-        resp_status, source = "LIVE", "openstreetmap_overpass"
+        resp_status = "LIVE"
+        source = "+".join(sorted(sources)) or "live_providers"
     elif "LIVE" in statuses:
-        resp_status, source = "MIXED", "openstreetmap_overpass+travelguard_demo_dataset"
+        resp_status = "MIXED"
+        source = "+".join(sorted(sources)) + "+travelguard_demo_dataset"
     else:
         resp_status, source = "DEMO", "travelguard_demo_dataset"
     return {
