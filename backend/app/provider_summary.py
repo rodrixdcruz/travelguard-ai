@@ -14,6 +14,7 @@ from typing import Any
 _SOURCE_LABELS = {
     "wikipedia_geosearch": "Wikipedia geosearch",
     "openstreetmap_overpass": "OpenStreetMap",
+    "openstreetmap_nominatim": "OSM Nominatim",
     "met-norway": "MET Norway",
     "open-meteo": "Open-Meteo",
     "osm_nominatim": "OSM Nominatim",
