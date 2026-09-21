@@ -37,6 +37,7 @@ def _to_optimizer_place(p: dict[str, Any]) -> dict[str, Any]:
         "place_id": p["id"],
         "name": p["name"],
         "category": p["category"],
+        "data_source": p.get("data_source"),
         "tags": tags,
         "distance_km": p.get("distance_km", 5.0),
         "estimated_cost": float(p.get("entry_fee", 0) or 0),   # per-person ticket
@@ -328,7 +329,14 @@ def plan_day(req: DayPlanRequest) -> dict[str, Any]:
         "optimizer": plan["optimizer"],
         "skipped": plan.get("skipped", []),
         "weather": wx,
-        "data_status": "DEMO",
+        # Report the ACTUAL mix of what was served: attractions carry their
+        # real per-item provenance; costs stay ESTIMATED (modeled rates);
+        # the whole response is DEMO only if every attraction was.
+        "data_status": (
+            "LIVE"
+            if any(i.get("data_status") == "LIVE" for i in items if i["type"] == "attraction")
+            else "DEMO"
+        ),
     }
 
 
