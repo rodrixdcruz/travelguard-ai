@@ -153,7 +153,7 @@ function ItineraryItem({ item }: { item: PlanItem }) {
 }
 
 export function DayPlanner() {
-  const { location, setLocation, needsLocation } = useTouristLocation()
+  const { location, setLocation, needsLocation, mode } = useTouristLocation()
   const [params, setParams] = useSearchParams()
   const interestParam = params.get('interest')
   const [interests, setInterests] = useState<string[]>(
@@ -251,19 +251,22 @@ export function DayPlanner() {
         <Panel title="Your day">
           <StepLabel n={1} title="WHERE ARE YOU?" />
           <div className="text-xs text-slate-300 mb-1">{location.name}</div>
-          <select
-            className="field !py-2 !text-xs"
-            value={DEMO_LOCATIONS.some((d) => d.name === location.name) ? location.name : ''}
-            onChange={(e) => {
-              const found = DEMO_LOCATIONS.find((d) => d.name === e.target.value)
-              if (found) setLocation(found)
-            }}
-          >
-            <option value="" disabled>Switch place…</option>
-            {DEMO_LOCATIONS.map((d) => (
-              <option key={d.name} value={d.name}>{d.name}</option>
-            ))}
-          </select>
+          {mode === 'demo' && (
+            <select
+              className="field !py-2 !text-xs"
+              title="Labeled demo places (Demo Mode dataset)"
+              value={DEMO_LOCATIONS.some((d) => d.name === location.name) ? location.name : ''}
+              onChange={(e) => {
+                const found = DEMO_LOCATIONS.find((d) => d.name === e.target.value)
+                if (found) setLocation(found)
+              }}
+            >
+              <option value="" disabled>Switch place…</option>
+              {DEMO_LOCATIONS.map((d) => (
+                <option key={d.name} value={d.name}>{d.name}</option>
+              ))}
+            </select>
+          )}
           <p className="text-[10px] text-slate-600 mt-1">Change your location from the homepage or Near Me.</p>
 
           <StepLabel n={2} title="HOW MUCH TIME?" />

@@ -30,11 +30,24 @@ OVERPASS_MIRRORS = (
     "https://overpass.private.coffee/api/interpreter",
 )
 USER_AGENT = "TravelGuardAI/0.1 (https://github.com/rodrixdcruz/travelguard-ai)"
-TIMEOUT = httpx.Timeout(15.0, connect=6.0)
+TIMEOUT = httpx.Timeout(8.0, connect=4.0)
+
+# Circuit breaker: after an all-mirrors failure, skip Overpass entirely for
+# a short window so a dead network costs one fast probe instead of a
+# full mirror sweep on every request. Failures are timestamped per process.
+BREAKER_WINDOW_SECONDS = 60.0
+_last_all_fail: list[float] = []  # [monotonic ts] — empty = closed
 
 
 def overpass_query(query: str) -> list[dict[str, Any]]:
     """Run one Overpass query across mirrors; raise OsmUnavailable if all fail."""
+    import time as _time
+
+    if _last_all_fail:
+        age = _time.monotonic() - _last_all_fail[0]
+        if age < BREAKER_WINDOW_SECONDS:
+            raise OsmUnavailable(f"overpass circuit open ({BREAKER_WINDOW_SECONDS:.0f}s window, {age:.0f}s ago all mirrors failed)")
+        _last_all_fail.clear()
     last: Exception | None = None
     for mirror in OVERPASS_MIRRORS:
         try:
@@ -45,10 +58,12 @@ def overpass_query(query: str) -> list[dict[str, Any]]:
                 timeout=TIMEOUT,
             )
             resp.raise_for_status()
+            _last_all_fail.clear()
             return resp.json().get("elements", [])
         except Exception as exc:  # noqa: BLE001 — mirrors are best-effort
             last = exc
     logger.warning("All Overpass mirrors failed (%s)", last)
+    _last_all_fail[:] = [_time.monotonic()]
     raise OsmUnavailable(str(last))
 
 # OSM tag filters per UI category, applied together with an `around` filter.
