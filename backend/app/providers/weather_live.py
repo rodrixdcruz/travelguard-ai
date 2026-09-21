@@ -19,7 +19,9 @@ from __future__ import annotations
 
 import logging
 import os
+import time
 from datetime import datetime, timezone
+from threading import Lock
 from typing import Any
 
 import httpx
@@ -31,6 +33,43 @@ MET_URL = "https://api.met.no/weatherapi/locationforecast/2.0/compact"
 USER_AGENT = "TravelGuardAI/0.1 (https://github.com/rodrixdcruz/travelguard-ai)"
 OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast"
 TIMEOUT = httpx.Timeout(12.0, connect=5.0)
+
+# --- In-memory TTL cache ---------------------------------------------------
+# Journeys analyze 5-8 segments per request and users re-analyze the same
+# routes repeatedly; without a cache every analysis re-hits MET Norway per
+# segment (and MET rate-limits per identifying User-Agent). Observations
+# update hourly upstream, so a short TTL keeps "LIVE" honest: the value is
+# at most a few minutes old and `data_source` still names the real provider.
+CACHE_TTL_SECONDS = 15 * 60
+CACHE_MAX_ENTRIES = 256
+# ~2 decimal places ≈ 1.1 km — segment midpoints for the same route collapse
+# to one fetch without confusing distinct nearby cities.
+_CACHE: dict[tuple[float, float], tuple[float, dict[str, Any]]] = {}
+_CACHE_LOCK = Lock()
+
+
+def _cache_key(latitude: float, longitude: float) -> tuple[float, float]:
+    return (round(latitude, 2), round(longitude, 2))
+
+
+def _cache_get(key: tuple[float, float]) -> dict[str, Any] | None:
+    now = time.monotonic()
+    with _CACHE_LOCK:
+        hit = _CACHE.get(key)
+        if hit is None:
+            return None
+        fetched_at, value = hit
+        if now - fetched_at >= CACHE_TTL_SECONDS:
+            _CACHE.pop(key, None)
+            return None
+        return dict(value)  # copy: callers must not mutate the shared entry
+
+
+def _cache_put(key: tuple[float, float], value: dict[str, Any]) -> None:
+    with _CACHE_LOCK:
+        if len(_CACHE) >= CACHE_MAX_ENTRIES:
+            _CACHE.pop(min(_CACHE, key=lambda k: _CACHE[k][0]), None)
+        _CACHE[key] = (time.monotonic(), dict(value))
 
 # MET symbol stems -> condition label + derived visibility (km).
 # Suffixes (_day/_night/_polartwilight) are stripped before lookup.
@@ -70,14 +109,23 @@ class WeatherUnavailable(Exception):
 def current_conditions(latitude: float, longitude: float) -> dict[str, Any]:
     """Observed current weather for a coordinate (LIVE) + derived visibility (ESTIMATED).
 
-    Tries MET Norway, then Open-Meteo; raises WeatherUnavailable when both fail.
+    Served from a small TTL cache when a recent observation exists (repeat
+    journey analyses skip the provider round-trip entirely). Tries MET
+    Norway, then Open-Meteo; raises WeatherUnavailable when both fail.
+    Failures are NOT cached — the next request retries the providers.
     """
     if _live_disabled():
         raise WeatherUnavailable("live providers disabled via TRAVELGUARD_DISABLE_LIVE_PROVIDERS")
+    key = _cache_key(latitude, longitude)
+    cached = _cache_get(key)
+    if cached is not None:
+        return cached
     errors: list[str] = []
     for fetch in (_met_conditions, _open_meteo_conditions):
         try:
-            return fetch(latitude, longitude)
+            result = fetch(latitude, longitude)
+            _cache_put(key, result)
+            return result
         except WeatherUnavailable as exc:
             errors.append(str(exc))
     logger.warning("All live weather providers unavailable (%s); caller should fall back to demo", "; ".join(errors))
