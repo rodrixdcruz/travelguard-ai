@@ -155,6 +155,7 @@ def plan_day(req: DayPlanRequest) -> dict[str, Any]:
         raise ValueError("duration must resolve to 1–14 hours")
     budget_per_person = _parse_budget(req.budget)
     travelers = TRAVELERS_MAP.get(str(req.travelers), 2)
+    days = max(1, min(int(getattr(req, "days", 1) or 1), 7))
 
     # ── 1. Discover candidates near the tourist ──
     radius = 12.0 if hours >= 5 else 8.0
@@ -186,19 +187,38 @@ def plan_day(req: DayPlanRequest) -> dict[str, Any]:
     }
 
     # ── 3. Feasibility optimization (existing optimizer — reused) ──
+    # Multi-day: the ranked list is consumed day by day — each day's
+    # optimizer starts where the previous day stopped, so no place repeats
+    # and the trip extends until places or days run out.
     from .ml.itinerary import build_itinerary
 
     max_stops = 2 if hours <= 2 else 3 if hours <= 4 else 4 if hours <= 5.5 else 6
-    plan = build_itinerary(
-        ranked_places,
-        available_hours=hours,
-        budget=budget_per_person,
-        interests=req.interests or [],
-        max_stops=max_stops,
-    )
+    ranked_pool = list(ranked_places)
+    day_plans: list[dict[str, Any]] = []
+    all_stops: list[dict[str, Any]] = []
+    optimizer_name = ""
+    for day_no in range(1, days + 1):
+        if not ranked_pool:
+            break
+        plan = build_itinerary(
+            ranked_pool,
+            available_hours=hours,
+            budget=budget_per_person,
+            interests=req.interests or [],
+            max_stops=max_stops,
+        )
+        optimizer_name = plan["optimizer"]
+        stops = plan["stops"]
+        if not stops:
+            break
+        day_plans.append({"day": day_no, "stops": stops, "skipped": plan.get("skipped", [])})
+        all_stops.extend(stops)
+        used = {s["place_id"] for s in stops}
+        ranked_pool = [p for p in ranked_pool if p["place_id"] not in used]
+    plan = {"stops": all_stops, "optimizer": optimizer_name or "greedy", "skipped": [], "days": day_plans}
     chosen_ids = {s["place_id"] for s in plan["stops"]}
 
-    # ── 4. Build the timeline with travel legs ──
+    # ── 4. Build the timeline with travel legs, per day ──
     start_time = req.start_time or "09:00"
     try:
         start_dt = datetime.strptime(start_time, "%H:%M")
@@ -206,77 +226,90 @@ def plan_day(req: DayPlanRequest) -> dict[str, Any]:
         start_dt = datetime.strptime("09:00", "%H:%M")
 
     items: list[dict[str, Any]] = []
+    day_items: list[list[dict[str, Any]]] = []
     cursor = (lat, lon)
     travel_total = 0.0
     transport_total = 0.0
 
-    for stop in plan["stops"]:
-        dest = next(
-            (p for p in opt_places if p["place_id"] == stop["place_id"]), None
-        )
-        if dest is None:
-            continue
-        leg = transport_provider.estimate(cursor, (dest["lat"], dest["lon"]), mode="taxi")
-        travel_total += leg["duration_min"]
-        transport_total += leg["estimated_fare_inr"] * transport_provider.vehicles_for(travelers)
-        items.append(
-            {
-                "type": "travel",
-                "name": f"Travel to {dest['name']}",
-                "category": "travel",
-                "detail": f"~{leg['distance_km']} km by {leg['mode']} (ESTIMATED)",
-                "duration_min": leg["duration_min"],
-                "cost_inr": round(leg["estimated_fare_inr"] * transport_provider.vehicles_for(travelers)),
-                "data_status": "ESTIMATED",
-                "safety": None,
-                "to_place_id": dest["place_id"],
-                "to_name": dest["name"],
-            }
-        )
-        cursor = (dest["lat"], dest["lon"])
-        visit_min = dest["visit_duration_hours"] * 60.0
-        item_reasons = reasons_by_id.get(dest["place_id"], {}).get("reasons", [])
-        items.append(
-            {
-                "type": "attraction",
-                "name": dest["name"],
-                "category": dest["category"],
-                "place_id": dest["place_id"],
-                "detail": dest.get("opening_status", "unknown"),
-                "data_source": dest.get("data_source"),
-                "duration_min": round(visit_min),
-                "travel_time_min": round(
-                    sum(
-                        i["duration_min"]
-                        for i in items
-                        if i["type"] == "travel" and i.get("to_place_id") == dest["place_id"]
-                    )
-                ),
-                "cost_inr": round(dest["entry_fee"] * travelers),
-                "ticket_required": dest.get("ticket_required"),
-                # The place's real provenance (LIVE from wikipedia/osm or DEMO) —
-                # never hardcode a label; the UI shows it per item.
-                "data_status": dest.get("data_status", "DEMO"),
-                "safety": _safety_band(dest["safety_context"]),
-                "recommendation_score": stop.get("recommendation_score"),
-                "reasons": item_reasons,
-                "latitude": dest["lat"],
-                "longitude": dest["lon"],
-            }
-        )
+    for day_idx, day in enumerate(plan["days"]):
+        day_start_items: list[dict[str, Any]] = []
+        # Each day begins again at the tourist's base (hotel/home).
+        day_cursor = (lat, lon)
+        for stop in day["stops"]:
+            dest = next(
+                (p for p in opt_places if p["place_id"] == stop["place_id"]), None
+            )
+            if dest is None:
+                continue
+            leg = transport_provider.estimate(day_cursor, (dest["lat"], dest["lon"]), mode="taxi")
+            travel_total += leg["duration_min"]
+            transport_total += leg["estimated_fare_inr"] * transport_provider.vehicles_for(travelers)
+            day_start_items.append(
+                {
+                    "type": "travel",
+                    "name": f"Travel to {dest['name']}",
+                    "category": "travel",
+                    "detail": f"~{leg['distance_km']} km by {leg['mode']} (ESTIMATED)",
+                    "duration_min": leg["duration_min"],
+                    "cost_inr": round(leg["estimated_fare_inr"] * transport_provider.vehicles_for(travelers)),
+                    "data_status": "ESTIMATED",
+                    "safety": None,
+                    "to_place_id": dest["place_id"],
+                    "to_name": dest["name"],
+                    "day": day["day"],
+                }
+            )
+            day_cursor = (dest["lat"], dest["lon"])
+            visit_min = dest["visit_duration_hours"] * 60.0
+            item_reasons = reasons_by_id.get(dest["place_id"], {}).get("reasons", [])
+            day_start_items.append(
+                {
+                    "type": "attraction",
+                    "name": dest["name"],
+                    "category": dest["category"],
+                    "place_id": dest["place_id"],
+                    "detail": dest.get("opening_status", "unknown"),
+                    "data_source": dest.get("data_source"),
+                    "duration_min": round(visit_min),
+                    "travel_time_min": round(
+                        sum(
+                            i["duration_min"]
+                            for i in day_start_items
+                            if i["type"] == "travel" and i.get("to_place_id") == dest["place_id"]
+                        )
+                    ),
+                    "cost_inr": round(dest["entry_fee"] * travelers),
+                    "ticket_required": dest.get("ticket_required"),
+                    # The place's real provenance (LIVE from wikipedia/osm or DEMO) —
+                    # never hardcode a label; the UI shows it per item.
+                    "data_status": dest.get("data_status", "DEMO"),
+                    "safety": _safety_band(dest["safety_context"]),
+                    "recommendation_score": stop.get("recommendation_score"),
+                    "reasons": item_reasons,
+                    "latitude": dest["lat"],
+                    "longitude": dest["lon"],
+                    "day": day["day"],
+                }
+            )
 
-    # ── Meal breaks inserted at their clock-time windows, then times assigned ──
-    items, _ = _insert_meals(items, (lat, lon), travelers, start_dt)
+        # Meal windows reset per day (lunch/dinner possible every day), then
+        # the day's clock times are assigned from the day's start.
+        day_items_list, _ = _insert_meals(day_start_items, (lat, lon), travelers, start_dt)
+        running_day = 0.0
+        for item in day_items_list:
+            item["time"] = _clock(start_dt, running_day)
+            running_day += item.get("duration_min", 0)
+        day_items.append(day_items_list)
+        items.extend(day_items_list)
 
-    # Single sequential pass: every item's clock time follows the running total.
-    running = 0.0
-    for item in items:
-        item["time"] = _clock(start_dt, running)
-        running += item.get("duration_min", 0)
-
-    total_min = running
+    total_min = sum(i.get("duration_min", 0) for i in items)
     food_total = sum(i["cost_inr"] for i in items if i["type"] == "meal")
-    tickets_total = round(float(plan["cost_breakdown"]["tickets"]) * travelers)
+    tickets_total = round(
+        sum(
+            (next((p for p in opt_places if p["place_id"] == s["place_id"]), {}) or {}).get("entry_fee", 0) * travelers
+            for s in plan["stops"]
+        )
+    )
 
     # ── 5. Local safety context (existing ML safety model — reused) ──
     wx = weather_provider.current_conditions(lat, lon)
@@ -298,7 +331,18 @@ def plan_day(req: DayPlanRequest) -> dict[str, Any]:
         "itinerary": {
             "start_time": start_dt.strftime("%H:%M"),
             "end_time": end_dt.strftime("%H:%M"),
+            "days": days,
+            "days_scheduled": len(day_items),
             "items": items,
+            "per_day": [
+                {
+                    "day": idx + 1,
+                    "places": sum(1 for i in lst if i["type"] == "attraction"),
+                    "time_min": round(sum(i.get("duration_min", 0) for i in lst)),
+                    "cost_inr": round(sum(i.get("cost_inr", 0) for i in lst)),
+                }
+                for idx, lst in enumerate(day_items)
+            ],
             "totals": {
                 "places": len(plan["stops"]),
                 "total_time_min": round(total_min),

@@ -90,6 +90,7 @@ export function planDay(req: {
   interests: string[]
   travelers: string | number
   start_time?: string
+  days?: number
 }): Promise<DayPlan> {
   return post<DayPlan>('/api/plan/day', req)
 }

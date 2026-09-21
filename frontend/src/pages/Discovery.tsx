@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import Panel from '../components/Panel'
 import RiskMap from '../map/RiskMap'
@@ -164,6 +164,8 @@ export function DayPlanner() {
   const [duration, setDuration] = useState('half_day')
   const [budget, setBudget] = useState('moderate')
   const [customBudget, setCustomBudget] = useState('')
+  const [days, setDays] = useState(1)
+  const [activeDay, setActiveDay] = useState<number | 'all'>('all')
   const [travelers, setTravelers] = useState('2')
   const [startTime, setStartTime] = useState('09:00')
   const [plan, setPlan] = useState<DayPlan | null>(null)
@@ -187,8 +189,10 @@ export function DayPlanner() {
         interests,
         travelers,
         start_time: startTime,
+        days,
       })
       setPlan(result)
+      setActiveDay('all')
       // Persist for the AI Assistant's discovery context (real app data, never invented).
       try {
         localStorage.setItem('tg_last_plan_v1', JSON.stringify(result))
@@ -282,6 +286,17 @@ export function DayPlanner() {
             ))}
           </div>
 
+          <div className="mt-3">
+            <span className="text-[11px] text-slate-500">Trip length (days):</span>
+            <div className="flex flex-wrap gap-1.5 mt-1">
+              {[1, 2, 3, 4, 5, 6, 7].map((n) => (
+                <Chip key={n} active={days === n} onClick={() => { setDays(n); setActiveDay('all') }}>
+                  {n === 1 ? '1 day' : `${n} days`}
+                </Chip>
+              ))}
+            </div>
+          </div>
+
           <StepLabel n={3} title="WHAT'S YOUR BUDGET?" />
           <div className="flex flex-wrap gap-1.5">
             {BUDGETS.map((b) => (
@@ -369,13 +384,13 @@ export function DayPlanner() {
           {plan && (
             <div id="plan-summary" className="grid grid-cols-3 gap-3">
               {[
-                { label: 'YOUR DAY — PLACES', value: String(plan.itinerary.totals.places) },
+                { label: (plan.itinerary.days ?? 1) > 1 ? `YOUR ${plan.itinerary.days_scheduled}-DAY TRIP — PLACES` : 'YOUR DAY — PLACES', value: String(plan.itinerary.totals.places) },
                 {
-                  label: 'YOUR DAY — HOURS',
+                  label: (plan.itinerary.days ?? 1) > 1 ? 'YOUR TRIP — TOTAL HOURS' : 'YOUR DAY — HOURS',
                   value: `${Math.floor(plan.itinerary.totals.total_time_min / 60)}h ${plan.itinerary.totals.total_time_min % 60}m`,
                 },
                 {
-                  label: 'YOUR DAY — ESTIMATED',
+                  label: (plan.itinerary.days ?? 1) > 1 ? 'YOUR TRIP — ESTIMATED' : 'YOUR DAY — ESTIMATED',
                   value: `₹${plan.cost_breakdown.total_estimate.toLocaleString('en-IN')}`,
                 },
               ].map((s) => (
@@ -387,15 +402,50 @@ export function DayPlanner() {
             </div>
           )}
 
+          {plan && plan.itinerary.days && plan.itinerary.days > 1 && (
+            <div className="flex flex-wrap gap-1.5">
+              <Chip active={activeDay === 'all'} onClick={() => setActiveDay('all')}>
+                All {plan.itinerary.days_scheduled} days
+              </Chip>
+              {plan.itinerary.per_day?.map((d) => (
+                <Chip key={d.day} active={activeDay === d.day} onClick={() => setActiveDay(d.day)}>
+                  Day {d.day} · {d.places}p · {Math.floor(d.time_min / 60)}h{d.time_min % 60 ? `${d.time_min % 60}m` : ''}
+                </Chip>
+              ))}
+            </div>
+          )}
+
           {plan && (
             <div className="grid md:grid-cols-2 gap-6">
               <Panel title="Timeline">
                 <ProviderSummaryLine summary={plan.provider_summary} />
-                <ul>
-                  {plan.itinerary.items.map((item, i) => (
-                    <ItineraryItem key={i} item={item} />
-                  ))}
-                </ul>
+                {(() => {
+                  const multi = (plan.itinerary.days ?? 1) > 1
+                  const shown = multi && activeDay !== 'all'
+                    ? plan.itinerary.items.filter((i) => i.day === activeDay)
+                    : plan.itinerary.items
+                  let lastDay = 0
+                  return (
+                    <ul>
+                      {shown.map((item, i) => {
+                        const showHeader = multi && item.day && item.day !== lastDay
+                        lastDay = item.day ?? lastDay
+                        return (
+                          <Fragment key={i}>
+                            {showHeader && (
+                              <li className="pt-2 pb-1">
+                                <span className="text-[10px] font-bold tracking-widest text-cyan-300/80">
+                                  DAY {item.day}
+                                </span>
+                              </li>
+                            )}
+                            <ItineraryItem item={item} />
+                          </Fragment>
+                        )
+                      })}
+                    </ul>
+                  )
+                })()}
                 <div className="mt-2 pt-3 border-t border-white/5 space-y-1.5">
                   <div className="flex justify-between text-xs">
                     <span className="text-slate-500">Within budget?</span>

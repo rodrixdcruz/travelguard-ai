@@ -69,6 +69,7 @@ export interface PlanItem {
   category?: string
   travel_time_min?: number
   reasons?: string[]
+  day?: number
 }
 
 export interface DayPlan {
@@ -84,6 +85,9 @@ export interface DayPlan {
   itinerary: {
     start_time: string
     end_time: string
+    days?: number
+    days_scheduled?: number
+    per_day?: { day: number; places: number; time_min: number; cost_inr: number }[]
     items: PlanItem[]
     totals: {
       places: number

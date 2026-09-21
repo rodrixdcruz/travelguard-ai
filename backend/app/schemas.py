@@ -146,3 +146,4 @@ class DayPlanRequest(BaseModel):
     interests: list[str] = Field(default_factory=list)
     travelers: str | int = "2"          # 1 | 2 | family | group
     start_time: Optional[str] = None    # HH:MM, default 09:00
+    days: int = 1                       # 1–7: multi-day trip; places split across days
