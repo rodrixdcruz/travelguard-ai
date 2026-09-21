@@ -12,6 +12,7 @@ import os
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
+import httpx
 
 from .places_osm import OsmUnavailable, overpass_query
 
