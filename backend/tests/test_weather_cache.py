@@ -71,7 +71,9 @@ def test_failure_is_not_cached(monkeypatch):
         current_conditions(21.1458, 79.0882)
     with pytest.raises(WeatherUnavailable):
         current_conditions(21.1458, 79.0882)
-    assert calls["n"] == 2  # retried, not cached
+    # Both providers tried on each request (2 × 2 = 4 attempts) — the point is
+    # the second request retried instead of replaying a cached failure (= 2).
+    assert calls["n"] == 4
 
 
 def test_fallback_result_is_cached_too(monkeypatch):
