@@ -4,6 +4,7 @@ import Panel from '../components/Panel'
 import RiskMap from '../map/RiskMap'
 import { DataBadge, OpeningChip } from '../components/DataStatusBadge'
 import { ProviderSummaryLine } from '../components/ProviderSummaryLine'
+import LocationSearch from '../components/LocationSearch'
 import { fetchLocalSafety, fetchNearbyFood, fetchNearbyServices, planDay } from '../services/discovery'
 import { useTouristLocation } from '../context/LocationContext'
 import { DEMO_LOCATIONS, type DayPlan, type LocalSafety, type PlanItem } from '../types/discovery'
@@ -162,6 +163,7 @@ export function DayPlanner() {
   )
   const [duration, setDuration] = useState('half_day')
   const [budget, setBudget] = useState('moderate')
+  const [customBudget, setCustomBudget] = useState('')
   const [travelers, setTravelers] = useState('2')
   const [startTime, setStartTime] = useState('09:00')
   const [plan, setPlan] = useState<DayPlan | null>(null)
@@ -252,7 +254,7 @@ export function DayPlanner() {
         <Panel title="Your day">
           <StepLabel n={1} title="WHERE ARE YOU?" />
           <div className="text-xs text-slate-300 mb-1">{location.name}</div>
-          {mode === 'demo' && (
+          {mode === 'demo' ? (
             <select
               className="field !py-2 !text-xs"
               title="Labeled demo places (Demo Mode dataset)"
@@ -267,8 +269,9 @@ export function DayPlanner() {
                 <option key={d.name} value={d.name}>{d.name}</option>
               ))}
             </select>
+          ) : (
+            <LocationSearch />
           )}
-          <p className="text-[10px] text-slate-600 mt-1">Change your location from the homepage or Near Me.</p>
 
           <StepLabel n={2} title="HOW MUCH TIME?" />
           <div className="flex flex-wrap gap-1.5">
@@ -282,11 +285,43 @@ export function DayPlanner() {
           <StepLabel n={3} title="WHAT'S YOUR BUDGET?" />
           <div className="flex flex-wrap gap-1.5">
             {BUDGETS.map((b) => (
-              <Chip key={b.value} active={budget === b.value} onClick={() => setBudget(b.value)}>
+              <Chip
+                key={b.value}
+                active={budget === b.value}
+                onClick={() => {
+                  setBudget(b.value)
+                  setCustomBudget('')
+                }}
+              >
                 {b.label}
               </Chip>
             ))}
           </div>
+          <div className="mt-2 flex items-center gap-2">
+            <span className="text-[11px] text-slate-500">or custom per person (₹):</span>
+            <input
+              type="number"
+              min={100}
+              step={100}
+              inputMode="numeric"
+              className="field !py-1.5 !text-xs w-28"
+              placeholder="e.g. 3500"
+              aria-label="Custom budget per person in rupees"
+              value={customBudget}
+              onChange={(e) => {
+                const v = e.target.value
+                setCustomBudget(v)
+                const n = Number(v)
+                setBudget(v !== '' && n >= 100 ? String(n) : 'moderate')
+              }}
+            />
+            {customBudget !== '' && Number(customBudget) >= 100 && (
+              <span className="text-[10px] text-emerald-300">custom ✓</span>
+            )}
+          </div>
+          {customBudget !== '' && Number(customBudget) < 100 && (
+            <p className="mt-1 text-[10px] text-amber-300">Minimum custom budget is ₹100 — using Moderate until then.</p>
+          )}
 
           <StepLabel n={4} title="WHAT DO YOU ENJOY?" />
           <div className="flex flex-wrap gap-1.5">
