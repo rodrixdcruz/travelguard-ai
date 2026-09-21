@@ -29,18 +29,33 @@ TIMEOUT = httpx.Timeout(10.0, connect=4.0)
 MAX_RADIUS_M = 10000  # MediaWiki hard limit for gsradius
 
 # Words in titles that mark infrastructure/non-POI articles (metro stations
-# etc. dominate dense-city geosearch and crowd out actual attractions), or
-# historical-polity articles ("Kingdom of Nagpur") that geosearch matches by
-# coordinates but that are not visitable places.
+# etc. dominate dense-city geosearch and crowd out actual attractions).
 _DEMOTE_SUBSTRINGS = (
     "metro station",
     "railway station",
+)
+
+# Articles that geosearch matches by coordinates but that are NOT visitable
+# places — historical polities, administrative areas, roads — so they are
+# excluded outright rather than merely sorted to the back.
+_EXCLUDE_SUBSTRINGS = (
     "kingdom of",
     "province",
     "empire",
     "dynasty",
     "siege of",
     "battle of",
+    "constituency",
+    "assembly",
+    "municipal corporation",
+    "zilla parishad",
+    "taluka",
+    "tehsil",
+    "district council",
+    "state highway",
+    "national highway",
+    "expressway",
+    "airport authority",
 )
 
 
@@ -88,6 +103,8 @@ def fetch_notable(
         if lat is None or lon is None:
             continue
         lowered = title.lower()
+        if any(s in lowered for s in _EXCLUDE_SUBSTRINGS):
+            continue
         demoted = any(s in lowered for s in _DEMOTE_SUBSTRINGS)
         out.append(
             {
