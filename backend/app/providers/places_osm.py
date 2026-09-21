@@ -47,10 +47,25 @@ TIMEOUT = httpx.Timeout(8.0, connect=4.0)
 BREAKER_WINDOW_SECONDS = 60.0
 _last_all_fail: list[float] = []  # [monotonic ts] — empty = closed
 
+# Result cache: successful queries are repeated constantly (meal lookups on
+# every day plan, hospital proximity on every safety check) and each repeat
+# re-pays the full mirror round-trip. POI data changes on OSM timescales
+# (hours/days), so a 10-minute TTL is safely honest.
+RESULT_TTL_SECONDS = 600.0
+_RESULT_CACHE_MAX = 128
+_result_cache: dict[str, tuple[float, list[dict[str, Any]]]] = {}
+
 
 def overpass_query(query: str, timeout: httpx.Timeout | None = None) -> list[dict[str, Any]]:
     """Run one Overpass query across mirrors; raise OsmUnavailable if all fail."""
     import time as _time
+
+    hit = _result_cache.get(query)
+    if hit is not None:
+        ts, elements = hit
+        if _time.monotonic() - ts < RESULT_TTL_SECONDS:
+            return elements
+        _result_cache.pop(query, None)
 
     if _last_all_fail:
         age = _time.monotonic() - _last_all_fail[0]
@@ -76,6 +91,9 @@ def overpass_query(query: str, timeout: httpx.Timeout | None = None) -> list[dic
                 empty_200 = empty_200 or mirror
                 continue
             _last_all_fail.clear()
+            if len(_result_cache) >= _RESULT_CACHE_MAX:
+                _result_cache.pop(min(_result_cache, key=lambda k: _result_cache[k][0]), None)
+            _result_cache[query] = (_time.monotonic(), elements)
             return elements
         except Exception as exc:  # noqa: BLE001 — mirrors are best-effort
             last = exc

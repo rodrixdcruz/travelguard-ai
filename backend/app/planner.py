@@ -6,6 +6,7 @@ downstream; it never invents places, prices or hours here.
 """
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -77,7 +78,26 @@ def _insert_meals(
             if label in meals_used:
                 continue
             if lo <= start_hour <= hi:
-                nearby_food = food_provider.fetch_nearby(origin[0], origin[1], radius_km=3.0, limit=1)
+                # Best-effort name lookup with a HARD time budget: the live
+                # food provider sweeps up to 5 Overpass mirrors before giving
+                # up (~40s when the network is bad), which would stall the
+                # whole itinerary. Meal naming is cosmetic — generic label
+                # + estimated price is always acceptable.
+                nearby_food: list[dict[str, Any]] = []
+                # NOTE: shutdown(wait=False) — the context-manager form would
+                # BLOCK on exit until the abandoned sweep finishes, defeating
+                # the timeout entirely (observed: +40s per meal window).
+                pool = ThreadPoolExecutor(max_workers=1)
+                fut = pool.submit(
+                    food_provider.fetch_nearby,
+                    origin[0], origin[1], radius_km=3.0, limit=1,
+                )
+                try:
+                    nearby_food = fut.result(timeout=8.0) or []
+                except Exception:  # noqa: BLE001 — timeout or provider error
+                    nearby_food = []
+                finally:
+                    pool.shutdown(wait=False)
                 per_person = (
                     food_provider.PRICE_CLASS_ESTIMATE.get(nearby_food[0]["price_range"], 400)
                     if nearby_food
@@ -221,6 +241,7 @@ def plan_day(req: DayPlanRequest) -> dict[str, Any]:
                 "category": dest["category"],
                 "place_id": dest["place_id"],
                 "detail": dest.get("opening_status", "unknown"),
+                "data_source": dest.get("data_source"),
                 "duration_min": round(visit_min),
                 "travel_time_min": round(
                     sum(
@@ -231,7 +252,9 @@ def plan_day(req: DayPlanRequest) -> dict[str, Any]:
                 ),
                 "cost_inr": round(dest["entry_fee"] * travelers),
                 "ticket_required": dest.get("ticket_required"),
-                "data_status": "DEMO",
+                # The place's real provenance (LIVE from wikipedia/osm or DEMO) —
+                # never hardcode a label; the UI shows it per item.
+                "data_status": dest.get("data_status", "DEMO"),
                 "safety": _safety_band(dest["safety_context"]),
                 "recommendation_score": stop.get("recommendation_score"),
                 "reasons": item_reasons,
@@ -318,7 +341,22 @@ def local_safety_context(
     ml_predictor.predict_safety. Shared by the day planner and the
     /api/safety/local endpoint so there is exactly one safety pipeline.
     """
-    hospital = services_provider.nearest_by_type(lat, lon, "hospital")
+    # Emergency-proximity lookup with a HARD time budget: the services
+    # provider sweeps up to 5 Overpass mirrors (~40s when the network is
+    # bad). A hospital name is a nice-to-have — the ML safety model scores
+    # fine without it.
+    def _nearest() -> Any:
+        return services_provider.nearest_by_type(lat, lon, "hospital")
+
+    # shutdown(wait=False) — see the meal-lookup note above.
+    pool = ThreadPoolExecutor(max_workers=1)
+    fut = pool.submit(_nearest)
+    try:
+        hospital = fut.result(timeout=8.0)
+    except Exception:  # noqa: BLE001 — timeout or provider error
+        hospital = None
+    finally:
+        pool.shutdown(wait=False)
     if wx is None:
         wx = weather_provider.current_conditions(lat, lon)
     return ml_predictor.predict_safety(
