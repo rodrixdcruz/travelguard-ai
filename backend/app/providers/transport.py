@@ -10,11 +10,17 @@ from typing import Any
 from .places import haversine_km
 
 # Modeled rates (INR per km) + minimum fares — ESTIMATED data, not live fares.
+# Ride-hailing (ola/uber/rapido) uses published city rate cards as the model —
+# clearly labeled ESTIMATED; no live fare API is called.
 RATES = {
     "taxi": {"per_km": 22.0, "min_fare": 60.0},
     "auto": {"per_km": 15.0, "min_fare": 30.0},
     "local_train": {"per_km": 2.5, "min_fare": 10.0},
     "bus": {"per_km": 2.0, "min_fare": 8.0},
+    "metro": {"per_km": 3.0, "min_fare": 10.0},
+    "ola": {"per_km": 17.0, "min_fare": 50.0},
+    "uber": {"per_km": 18.0, "min_fare": 55.0},
+    "rapido": {"per_km": 9.0, "min_fare": 25.0},
 }
 
 def vehicles_for(travelers: int) -> int:
@@ -27,7 +33,7 @@ def vehicles_for(travelers: int) -> int:
 # Road distance factor: streets wind, straight lines don't.
 ROAD_FACTOR = 1.35
 # Average city speed used for travel-time estimates (km/h) — ESTIMATED.
-SPEED_KMPH = {"taxi": 20.0, "auto": 18.0, "local_train": 32.0, "bus": 14.0}
+SPEED_KMPH = {"taxi": 20.0, "auto": 18.0, "local_train": 32.0, "bus": 14.0, "metro": 34.0, "ola": 22.0, "uber": 22.0, "rapido": 24.0}
 
 
 def estimate(a: tuple[float, float], b: tuple[float, float], mode: str = "taxi") -> dict[str, Any]:

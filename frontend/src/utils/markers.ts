@@ -8,6 +8,10 @@ export type MarkerKind =
   | 'pharmacy'
   | 'atm'
   | 'transport'
+  | 'bus_stand'
+  | 'railway_station'
+  | 'metro_station'
+  | 'taxi'
   | 'sos'
 
 export interface MapMarker {
@@ -26,12 +30,12 @@ export interface MapMarker {
 export type MapFilter = 'ALL' | 'ATTRACTIONS' | 'FOOD' | 'SAFETY' | 'SERVICES' | 'TRANSPORT'
 
 export const FILTER_KINDS: Record<MapFilter, MarkerKind[]> = {
-  ALL: ['attraction', 'food', 'hospital', 'police', 'pharmacy', 'atm', 'transport', 'sos'],
+  ALL: ['attraction', 'food', 'hospital', 'police', 'pharmacy', 'atm', 'transport', 'bus_stand', 'railway_station', 'metro_station', 'taxi', 'sos'],
   ATTRACTIONS: ['attraction'],
   FOOD: ['food'],
   SAFETY: ['hospital', 'police', 'sos'],
   SERVICES: ['pharmacy', 'atm'],
-  TRANSPORT: ['transport'],
+  TRANSPORT: ['transport', 'bus_stand', 'railway_station', 'metro_station', 'taxi'],
 }
 
 export const KIND_META: Record<MarkerKind, { glyph: string; color: string; label: string }> = {
@@ -42,6 +46,10 @@ export const KIND_META: Record<MarkerKind, { glyph: string; color: string; label
   pharmacy: { glyph: '℞', color: '#2dd4bf', label: 'Pharmacy' },
   atm: { glyph: '₹', color: '#a78bfa', label: 'ATM' },
   transport: { glyph: '🚉', color: '#94a3b8', label: 'Transport' },
+  bus_stand: { glyph: '🚌', color: '#7dd3fc', label: 'Bus stand' },
+  railway_station: { glyph: '🚆', color: '#c4b5fd', label: 'Railway station' },
+  metro_station: { glyph: '🚇', color: '#f0abfc', label: 'Metro station' },
+  taxi: { glyph: '🚖', color: '#fde68a', label: 'Taxi / auto stand' },
   sos: { glyph: '🆘', color: '#fb923c', label: 'Emergency' },
 }
 
@@ -88,7 +96,15 @@ export function markersFromDiscovery(
   const serviceMarkers: MapMarker[] = services.map((s) => ({
     id: s.id,
     name: s.name,
-    kind: SAFETY_TYPES[s.service_type] ?? (s.service_type === 'atm' ? 'atm' : s.service_type === 'transport' ? 'transport' : 'pharmacy'),
+    kind: SAFETY_TYPES[s.service_type] ?? (
+      s.service_type === 'atm' ? 'atm'
+      : s.service_type === 'transport' ? 'transport'
+      : s.service_type === 'bus_stand' ? 'bus_stand'
+      : s.service_type === 'railway_station' ? 'railway_station'
+      : s.service_type === 'metro_station' ? 'metro_station'
+      : s.service_type === 'taxi' || s.service_type === 'auto_stand' ? 'taxi'
+      : 'pharmacy'
+    ),
     category: s.service_type,
     latitude: s.latitude,
     longitude: s.longitude,

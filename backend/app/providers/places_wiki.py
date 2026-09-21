@@ -59,6 +59,29 @@ _EXCLUDE_SUBSTRINGS = (
 )
 
 
+# Title-keyword → discovery category. Wikipedia geosearch returns article
+# titles, not OSM tags — a lake is "Ambazari Lake", a zoo is "[X] Zoo" —
+# so classify from the title (first match wins; checked in specificity order).
+_TITLE_CATEGORIES = (
+    ("zoo", "zoo"),
+    ("lake", "lake"),
+    ("garden", "garden"),
+    ("park", "park"),
+    ("museum", "museum"),
+    ("fort", "historical"),
+    ("palace", "historical"),
+    ("stadium", "attraction"),
+)
+
+
+def _title_category(title: str) -> str:
+    lowered = title.lower()
+    for keyword, category in _TITLE_CATEGORIES:
+        if keyword in lowered:
+            return category
+    return "attraction"
+
+
 class WikiUnavailable(Exception):
     """Raised when the Wikipedia provider cannot serve a request."""
 
@@ -120,7 +143,7 @@ def fetch_notable(
             {
                 "id": f"wiki-{p.get('pageid', title[:24])}",
                 "name": title[:120],
-                "category": "attraction",
+                "category": _title_category(title),
                 "description": "Notable place with a Wikipedia article",
                 "latitude": float(lat),
                 "longitude": float(lon),

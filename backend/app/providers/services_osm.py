@@ -27,13 +27,17 @@ AMENITY_MAP = {
     "atm": "atm",
     "bank": "atm",
     "fuel": "fuel",
-    "bus_station": "transport",
+    "bus_station": "bus_stand",
+    "bus_stop": "bus_stand",
     "taxi": "taxi",
 }
 
 QUERY = (
     "[out:json][timeout:12];"
-    "nwr(around:{radius},{lat:.6f},{lon:.6f})[\"amenity\"~\"^(hospital|clinic|doctors|pharmacy|police|fire_station|atm|bank|fuel|bus_station|taxi)$\"][\"name\"];"
+    "nwr(around:{radius},{lat:.6f},{lon:.6f})[\"amenity\"~\"^(hospital|clinic|doctors|pharmacy|police|fire_station|atm|bank|fuel|bus_station|bus_stop|taxi)$\"][\"name\"];"
+    "(nwr(around:{radius},{lat:.6f},{lon:.6f})[\"railway\"~\"^(station|halt)$\"][\"name\"];"
+    "nwr(around:{radius},{lat:.6f},{lon:.6f})[\"station\"~\"^(subway|light_rail)$\"][\"name\"];"
+    "nwr(around:{radius},{lat:.6f},{lon:.6f})[\"highway\"=\"bus_stop\"][\"name\"];)"
     "out center {limit};"
 )
 
@@ -51,7 +55,16 @@ def _normalize(el: dict[str, Any]) -> dict[str, Any] | None:
     if lat is None or lon is None:
         return None
 
-    service_type = AMENITY_MAP.get(tags.get("amenity", ""), "transport")
+    # Tag-precedence classification: railway/station/highway elements carry
+    # no `amenity` key, so classify by the most specific tag present.
+    if tags.get("railway") in ("station", "halt"):
+        service_type = "railway_station"
+    elif tags.get("station") in ("subway", "light_rail"):
+        service_type = "metro_station"
+    elif tags.get("highway") == "bus_stop":
+        service_type = "bus_stand"
+    else:
+        service_type = AMENITY_MAP.get(tags.get("amenity", ""), "transport")
     phone = tags.get("phone") or tags.get("contact:phone") or tags.get("emergency:phone")
 
     return {

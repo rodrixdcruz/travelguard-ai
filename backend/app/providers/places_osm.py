@@ -129,7 +129,8 @@ CATEGORY_MAP = {
 GENERAL_TAG_FILTERS = (
     '["tourism"]["name"]',
     '["historic"]["name"]',
-    '["leisure"~"^(park|nature_reserve)$"]["name"]',
+    '["leisure"~"^(park|nature_reserve|garden|water_park)$"]["name"]',
+    '["natural"~"^(water|wetland)$"]["name"]',
     '["amenity"~"^(place_of_worship|marketplace|cinema|theatre|arts_centre)$"]["name"]',
 )
 
@@ -180,14 +181,24 @@ def _normalize(el: dict[str, Any], lat: float, lon: float) -> dict[str, Any] | N
 
     tourism = tags.get("tourism", "")
     historic = tags.get("historic", "")
+    natural = tags.get("natural", "")
+    leisure = tags.get("leisure", "")
     if tourism == "museum":
         category = "museum"
+    elif tourism == "zoo":
+        category = "zoo"
+    elif natural == "water" or natural == "wetland":
+        category = "lake"
+    elif leisure == "garden":
+        category = "garden"
     elif historic:
         category = "historical"
     elif tourism in ("attraction", "viewpoint", "artwork", "gallery", "zoo"):
         category = "attraction"
-    elif tags.get("leisure") in ("park", "nature_reserve"):
+    elif leisure in ("park", "nature_reserve"):
         category = "park"
+    elif leisure == "water_park":
+        category = "attraction"
     elif tags.get("amenity") == "marketplace":
         category = "market"
     elif tags.get("shop"):
@@ -199,7 +210,7 @@ def _normalize(el: dict[str, Any], lat: float, lon: float) -> dict[str, Any] | N
     else:
         category = "experience"
 
-    kinds = [v for k, v in sorted(tags.items()) if k in ("tourism", "historic", "leisure", "amenity", "shop")]
+    kinds = [v for k, v in sorted(tags.items()) if k in ("tourism", "historic", "leisure", "natural", "amenity", "shop")]
     addr_parts = [
         tags.get(k)
         for k in ("addr:street", "addr:suburb", "addr:city")

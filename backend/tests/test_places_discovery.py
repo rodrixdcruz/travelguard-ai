@@ -36,7 +36,8 @@ def test_general_query_unions_all_tag_classes():
     q = seen["q"]
     assert '["tourism"]["name"]' in q
     assert '["historic"]["name"]' in q
-    assert "^(park|nature_reserve)$" in q
+    assert "^(park|nature_reserve|garden|water_park)$" in q
+    assert "^(water|wetland)$" in q
     assert "^(place_of_worship|marketplace|cinema|theatre|arts_centre)$" in q
     # generic shop flood-filter stays out of the union
     assert '["shop"]["name"]' not in q

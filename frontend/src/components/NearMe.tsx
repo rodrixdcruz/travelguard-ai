@@ -18,12 +18,16 @@ const NEAR_ME_BUTTONS: { key: string; label: string; filter?: MapFilter; service
   { key: 'pharmacies', label: '℞ Pharmacies', serviceType: 'pharmacy' },
   { key: 'atms', label: '₹ ATMs', serviceType: 'atm' },
   { key: 'transport', label: '🚉 Transport', serviceType: 'transport' },
+  { key: 'bus', label: '🚌 Bus stands', serviceType: 'bus_stand' },
+  { key: 'railway', label: '🚆 Railway', serviceType: 'railway_station' },
+  { key: 'metro', label: '🚇 Metro', serviceType: 'metro_station' },
+  { key: 'taxis', label: '🚖 Taxi / Auto stands', serviceType: 'taxi' },
 ]
 
 const FILTERS: MapFilter[] = ['ALL', 'ATTRACTIONS', 'FOOD', 'SAFETY', 'SERVICES', 'TRANSPORT']
 
 export default function NearMe() {
-  const { location, setLocation, needsLocation } = useTouristLocation()
+  const { location, setLocation, needsLocation, mode } = useTouristLocation()
   const [places, setPlaces] = useState<Place[]>([])
   const [food, setFood] = useState<FoodPlace[]>([])
   const [services, setServices] = useState<LocalService[]>([])
@@ -87,19 +91,7 @@ export default function NearMe() {
     if (activeButton === 'ALL' || !NEAR_ME_BUTTONS.some((b) => b.key === activeButton)) return filtered
     const btn = NEAR_ME_BUTTONS.find((b) => b.key === activeButton)
     if (btn?.serviceType) {
-      return filtered.filter((m) =>
-        btn.serviceType === 'hospital'
-          ? m.category === 'hospital'
-          : btn.serviceType === 'police'
-            ? m.category === 'police'
-            : btn.serviceType === 'pharmacy'
-              ? m.category === 'pharmacy'
-              : btn.serviceType === 'atm'
-                ? m.category === 'atm'
-                : btn.serviceType === 'transport'
-                  ? m.category === 'transport'
-                  : true,
-      )
+      return filtered.filter((m) => m.category === btn.serviceType)
     }
     return filtered
   }, [allMarkers, filter, activeButton])
@@ -151,23 +143,25 @@ export default function NearMe() {
           <div className="space-y-2">
             <LocationSearch />
             <div className="grid grid-cols-2 gap-2">
-              <button onClick={useMyLocation} disabled={locating} className="btn-primary !py-2.5 !text-xs">
+              <button onClick={useMyLocation} disabled={locating} className="btn-primary !py-2.5 !text-xs col-span-2">
                 {locating ? 'Locating…' : '📍 Use my location'}
               </button>
-              <select
-                className="field !py-2.5 !text-xs"
-                title="Labeled demo places (Demo Mode dataset)"
-                value={DEMO_LOCATIONS.some((d) => d.name === location.name) ? location.name : ''}
-                onChange={(e) => {
-                  const found = DEMO_LOCATIONS.find((d) => d.name === e.target.value)
-                  if (found) setLocation(found)
-                }}
-              >
-                <option value="" disabled>Demo places…</option>
-                {DEMO_LOCATIONS.map((d) => (
-                  <option key={d.name} value={d.name}>{d.name}</option>
-                ))}
-              </select>
+              {mode === 'demo' && (
+                <select
+                  className="field !py-2.5 !text-xs col-span-2"
+                  title="Labeled demo places (Demo Mode dataset)"
+                  value={DEMO_LOCATIONS.some((d) => d.name === location.name) ? location.name : ''}
+                  onChange={(e) => {
+                    const found = DEMO_LOCATIONS.find((d) => d.name === e.target.value)
+                    if (found) setLocation(found)
+                  }}
+                >
+                  <option value="" disabled>Demo places…</option>
+                  {DEMO_LOCATIONS.map((d) => (
+                    <option key={d.name} value={d.name}>{d.name}</option>
+                  ))}
+                </select>
+              )}
             </div>
           </div>
           {locError && (

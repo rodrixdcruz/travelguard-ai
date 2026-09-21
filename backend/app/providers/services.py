@@ -20,6 +20,7 @@ logger = logging.getLogger("travelguard.services")
 SERVICE_TYPES = {
     "hospital", "pharmacy", "police", "ambulance", "fire", "tourist_help",
     "atm", "fuel", "supermarket", "transport", "taxi",
+    "bus_stand", "railway_station", "metro_station", "auto_stand",
 }
 
 SAFETY_RELEVANT = {"hospital", "police", "pharmacy", "ambulance", "fire"}
