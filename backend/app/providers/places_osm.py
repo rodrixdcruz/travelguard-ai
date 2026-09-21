@@ -27,11 +27,16 @@ logger = logging.getLogger("travelguard.places_osm")
 
 OVERPASS_URL = "https://overpass-api.de/api/interpreter"
 # Mirrors tried in order — the primary endpoint throttles/hibernates
-# occasionally, and some egress networks only reach some mirrors.
+# occasionally (and on bad days 504s everything: "server too busy"), and
+# some egress networks only reach some mirrors. Regional instances sit
+# last: they answer fast but may lack global coverage, so they are the
+# final attempt, not the first.
 OVERPASS_MIRRORS = (
     OVERPASS_URL,
     "https://overpass.kumi.systems/api/interpreter",
     "https://overpass.private.coffee/api/interpreter",
+    "https://overpass.openstreetmap.ru/api/interpreter",
+    "https://overpass.osm.ch/api/interpreter",
 )
 USER_AGENT = "TravelGuardAI/0.1 (https://github.com/rodrixdcruz/travelguard-ai)"
 TIMEOUT = httpx.Timeout(8.0, connect=4.0)
@@ -53,6 +58,7 @@ def overpass_query(query: str, timeout: httpx.Timeout | None = None) -> list[dic
             raise OsmUnavailable(f"overpass circuit open ({BREAKER_WINDOW_SECONDS:.0f}s window, {age:.0f}s ago all mirrors failed)")
         _last_all_fail.clear()
     last: Exception | None = None
+    empty_200: str | None = None  # a mirror answered 200 but with no elements
     for mirror in OVERPASS_MIRRORS:
         try:
             resp = httpx.post(
@@ -62,10 +68,22 @@ def overpass_query(query: str, timeout: httpx.Timeout | None = None) -> list[dic
                 timeout=timeout or TIMEOUT,
             )
             resp.raise_for_status()
+            elements = resp.json().get("elements", [])
+            if not elements:
+                # 200-but-empty: regional instances legitimately have no data
+                # outside their area — not an authoritative "nothing here".
+                # Remember it but keep trying the remaining mirrors.
+                empty_200 = empty_200 or mirror
+                continue
             _last_all_fail.clear()
-            return resp.json().get("elements", [])
+            return elements
         except Exception as exc:  # noqa: BLE001 — mirrors are best-effort
             last = exc
+    if empty_200:
+        # Every mirror either failed or answered empty; prefer the honest
+        # empty result over a network error.
+        _last_all_fail.clear()
+        return []
     logger.warning("All Overpass mirrors failed (%s)", last)
     _last_all_fail[:] = [_time.monotonic()]
     raise OsmUnavailable(str(last))
