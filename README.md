@@ -6,6 +6,12 @@
 
 **Know the Risk Before You Reach It.**
 
+![30-second Live-mode walkthrough](docs/gif/walkthrough.gif)
+
+*Live mode end-to-end: honest location prompt → Nagpur via real place search →
+Near Me discovery with transit POIs on the map → journey analysis with the
+8-mode fare comparison.*
+
 > 🌐 **Live:** [travelguard-web.onrender.com](https://travelguard-web.onrender.com) ·
 > API: [travelguard-api.onrender.com/health](https://travelguard-api.onrender.com/health)
 > — no login needed; defaults to **LIVE MODE** (real GPS location, key-less live
