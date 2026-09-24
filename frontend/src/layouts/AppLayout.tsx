@@ -16,7 +16,16 @@ const NAV = [
 
 export default function AppLayout() {
   const { pathname } = useLocation()
-  const { sosOpen, setSosOpen, location } = useTouristLocation()
+  const { sosOpen, setSosOpen, location, resetLocation } = useTouristLocation()
+
+  const sourceHint =
+    location.source === 'browser'
+      ? 'From your device GPS'
+      : location.source === 'search'
+        ? 'Place you selected'
+        : location.source === 'demo'
+          ? 'Demo location'
+          : 'Not set yet'
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -58,13 +67,34 @@ export default function AppLayout() {
             })}
           </nav>
 
-          {/* SOS — always visible */}
-          <button
-            onClick={() => setSosOpen(true)}
-            className="shrink-0 px-4 py-2 rounded-xl text-xs font-bold tracking-widest bg-red-500/15 border border-red-400/40 text-red-300 hover:bg-red-500/25 transition-colors"
-          >
-            🚨 SOS
-          </button>
+          {/* Location chip + SOS — always visible. The × resets a bad
+              location (far-away GPS fix, wrong manual pick, stale persisted
+              value) from any page, returning to the explicit choice state. */}
+          <div className="shrink-0 flex items-center gap-2">
+            {location.source !== 'unset' && (
+              <span
+                title={sourceHint}
+                className="inline-flex items-center gap-1.5 max-w-[130px] sm:max-w-[220px] text-xs text-slate-400 border border-white/10 rounded-lg px-2.5 py-2"
+              >
+                <span className="text-slate-500">📍</span>
+                <span className="truncate">{location.name}</span>
+                <button
+                  onClick={resetLocation}
+                  title="Reset location"
+                  aria-label="Reset location"
+                  className="ml-0.5 w-4 h-4 leading-none rounded text-slate-500 hover:text-red-300 hover:bg-white/10 transition-colors"
+                >
+                  ×
+                </button>
+              </span>
+            )}
+            <button
+              onClick={() => setSosOpen(true)}
+              className="px-4 py-2 rounded-xl text-xs font-bold tracking-widest bg-red-500/15 border border-red-400/40 text-red-300 hover:bg-red-500/25 transition-colors"
+            >
+              🚨 SOS
+            </button>
+          </div>
         </div>
       </header>
 

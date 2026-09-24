@@ -29,6 +29,13 @@ export interface LocationState {
   needsLocation: boolean
   /** Set the current location; persists unless the demo dataset supplies it. */
   setLocation: (loc: TouristLocation, opts?: { persist?: boolean }) => void
+  /**
+   * Escape hatch from any location state: clears the stored location and
+   * returns to the explicit unset/choice state. Covers the "stuck location"
+   * case (e.g. a GPS fix far from any coverage, a wrong manual pick, or a
+   * bad persisted value) — reachable from the header chip on every page.
+   */
+  resetLocation: () => void
   /** True once the initial geolocation attempt has resolved (either way). */
   locationReady: boolean
   sosOpen: boolean
@@ -103,6 +110,21 @@ export function TouristLocationProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  // Escape hatch: clear any stored location and return to the explicit
+  // unset/choice state (never fabricate a fallback). In Demo Mode this only
+  // resets the stored key — the labeled demo location stays pinned.
+  const resetLocation = () => {
+    try {
+      localStorage.removeItem(LOC_STORAGE_KEY)
+    } catch {
+      /* ignore */
+    }
+    if (mode !== 'demo') {
+      setLocationState(null)
+      setLocationReady(false)
+    }
+  }
+
   // Initial geolocation: only in live mode, only when no stored location.
   useEffect(() => {
     if (location !== null) {
@@ -150,6 +172,7 @@ export function TouristLocationProvider({ children }: { children: ReactNode }) {
     location: mode === 'demo' ? DEMO_LOCATIONS[0] : (location ?? UNSET_LOCATION),
     needsLocation: mode === 'live' && location === null,
     setLocation,
+    resetLocation,
     locationReady,
     sosOpen,
     setSosOpen,
