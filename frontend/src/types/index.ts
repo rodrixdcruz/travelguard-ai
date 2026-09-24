@@ -65,6 +65,16 @@ export interface Journey {
   eta: string
 }
 
+export interface FareOption {
+  mode: string
+  label: string
+  icon: string
+  distance_km: number
+  duration_min: number
+  fare_inr: number
+  data_status: string
+}
+
 export interface AnalyzeResponse {
   journey: Journey
   overall_risk: OverallRisk
@@ -75,6 +85,7 @@ export interface AnalyzeResponse {
   data_mode: string
   intelligence_mode: string
   provider_summary?: { status: string; sources: string[]; line: string }
+  fare_comparison?: FareOption[]
   generated_at: string
 }
 

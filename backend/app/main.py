@@ -14,6 +14,7 @@ from . import ai, demo_data, risk_engine, services, store
 from .config import settings
 from .database import SessionLocal, db_status, get_db, init_db
 from .discovery_api import router as discovery_router
+from .fare_comparison import compare as fare_compare
 from .provider_summary import provider_summary
 from .ml import predictor as ml_predictor
 from .ml_api import router as ml_router
@@ -400,6 +401,9 @@ async def analyze_journey(req: AnalyzeRequest) -> AnalyzeResponse:
         segments=segments,
         alerts=_build_alerts(segments),
         recommendations=_build_recommendations(segments, overall, eta, total_duration),
+        fare_comparison=fare_compare(
+            (origin.lat, origin.lon), (destination.lat, destination.lon),
+        ),
         briefing="",
         data_mode=data_mode,
         intelligence_mode=intelligence_mode,

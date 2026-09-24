@@ -4,6 +4,7 @@ import { formatDuration, formatEta } from '../utils/format'
 import { RiskBadge, ScoreRing } from './RiskBadge'
 import RiskBreakdown from './RiskBreakdown'
 import AlertsList from './AlertsList'
+import FareComparison from './FareComparison'
 import RecommendationsList from './RecommendationsList'
 import SegmentDetail from './SegmentDetail'
 import Panel from './Panel'
@@ -29,6 +30,9 @@ export default function ResultsView({ mapHeight = 'h-[420px]' }: Props) {
 
   return (
     <div className="space-y-6">
+      {/* ── Fare comparison: all 8 modes, cheapest first ── */}
+      <FareComparison analysis={analysis} />
+
       {/* ── Journey info + overall risk ── */}
       <div className="grid lg:grid-cols-3 gap-6">
         <Panel className="lg:col-span-2">

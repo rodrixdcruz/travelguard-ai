@@ -94,6 +94,7 @@ class AnalyzeResponse(BaseModel):
     segments: list[Segment]
     alerts: list[Alert]
     recommendations: list[Recommendation]
+    fare_comparison: Optional[list[dict[str, Any]]] = None  # all modes, cheapest-first
     briefing: str
     data_mode: str = "demo"                  # demo | live
     intelligence_mode: str = "rule_based_demo"  # random_forest | rule_based_demo
