@@ -223,24 +223,37 @@ def fetch_food(latitude: float, longitude: float, radius_m: int = 8000, limit: i
 
 
 def _service_kind(cats: list[str]) -> Optional[str]:
-    """Geoapify categories → TravelGuard service_type; None = not a service we label."""
+    """Geoapify categories → TravelGuard service_type; None = not a service we label.
+
+    Geoapify lists parent and child categories together (e.g. both
+    "public_transport" and "public_transport.subway"), in no guaranteed
+    order — so specificity beats first-match: all strings are classified,
+    then the most specific kind wins (metro_station over transport).
+    """
+    kinds: set[str] = set()
     for c in cats:
         if c.startswith("healthcare.pharmacy"):
-            return "pharmacy"
-        if c.startswith("healthcare"):
-            return "hospital"
-        if c.startswith("service.financial"):
-            return "atm"
-        if c.startswith("public_transport.subway"):
-            return "metro_station"
-        if c.startswith("public_transport.train"):
-            return "railway_station"
-        if c.startswith("public_transport.bus"):
-            return "bus_stand"
-        if c.startswith("public_transport"):
-            return "transport"
-        if c.startswith("commercial.supermarket"):
-            return "supermarket"
+            kinds.add("pharmacy")
+        elif c.startswith("healthcare"):
+            kinds.add("hospital")
+        elif c.startswith("service.financial"):
+            kinds.add("atm")
+        elif c.startswith("public_transport.subway"):
+            kinds.add("metro_station")
+        elif c.startswith("public_transport.train"):
+            kinds.add("railway_station")
+        elif c.startswith("public_transport.bus"):
+            kinds.add("bus_stand")
+        elif c.startswith("public_transport"):
+            kinds.add("transport")
+        elif c.startswith("commercial.supermarket"):
+            kinds.add("supermarket")
+    for k in (
+        "pharmacy", "hospital", "atm", "metro_station",
+        "railway_station", "bus_stand", "supermarket", "transport",
+    ):
+        if k in kinds:
+            return k
     return None
 
 
