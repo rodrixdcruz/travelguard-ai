@@ -213,6 +213,7 @@ optional — with no keys the app still runs in **LIVE MODE** on key-less provid
 | `ACCIDENT_API_KEY` | Accident-history provider |
 | `AI_API_KEY`, `AI_MODEL`, `AI_BASE_URL` | OpenAI-compatible LLM for briefings/chat |
 | `FRONTEND_URL` | CORS origin for the backend |
+| `GEOAPIFY_API_KEY` | Optional geocoding tier-1 key (place search + GPS naming). Nominatim stays as key-less fallback — see note below |
 | `VITE_API_BASE_URL` | Backend URL for the frontend |
 
 Never commit real secrets — `.env` is git-ignored (`.env.example` is not).
@@ -246,6 +247,14 @@ Environment variables:
 | `ENVIRONMENT` | `production` |
 | `AI_API_KEY` *(optional)* | Enables live LLM briefings; omit for deterministic fallback |
 | `DATABASE_URL` *(optional)* | Postgres URL; omit for demo mode |
+| `GEOAPIFY_API_KEY` *(optional)* | Geocoding tier-1 key — recommended on Render (see note below) |
+
+> **Geocoding on Render:** OSM rate-limits datacenter IPs, so key-less
+> Nominatim place search often fails from Render's egress (`UNAVAILABLE`).
+> Set a free [`GEOAPIFY_API_KEY`](https://www.geoapify.com) (3,000 req/day,
+> no credit card) and place search works reliably; Nominatim remains the
+> automatic fallback if Geoapify ever fails, and the `/api/geo/*` responses
+> always label which geocoder served.
 
 Notes: the Docker CMD already binds `0.0.0.0:${PORT:-8000}`. Vercel preview URLs
 (`*.vercel.app`) are accepted by CORS automatically. **Model artifacts**

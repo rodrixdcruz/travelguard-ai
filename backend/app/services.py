@@ -37,7 +37,7 @@ def resolve_point(name: str) -> RoutePoint:
 
     from .providers import geocode  # local import avoids import cycle
 
-    results = geocode.search(name, limit=1)
+    results, _source = geocode.search(name, limit=1)
     if results:
         hit = results[0]
         return RoutePoint(name=hit["short_name"], lat=round(hit["latitude"], 4), lon=round(hit["longitude"], 4))
