@@ -83,10 +83,16 @@ async def health() -> dict:
 
 # ── Geocoding (honest location entry) ──────────────────────────────────
 
+_SOURCE_LABELS = {"geoapify": "Geoapify", "osm_nominatim": "OSM Nominatim"}
+
+
 @app.get("/api/geo/search")
 async def geo_search(q: str, limit: int = 6) -> dict:
-    """Place-name → real coordinates via OpenStreetMap Nominatim (key-less).
+    """Place-name → real coordinates via the geocoder chain.
 
+    Chain: Geoapify (when GEOAPIFY_API_KEY is set — works from cloud egress
+    like Render) → OSM Nominatim key-less. The fallback fires only when the
+    keyed provider FAILS; a legitimate "no matches" is reported as such.
     Empty results = no match or provider unavailable; the frontend says so
     instead of guessing. Never returns invented coordinates.
     """
@@ -94,16 +100,23 @@ async def geo_search(q: str, limit: int = 6) -> dict:
 
     if len(q.strip()) < 2:
         raise HTTPException(status_code=422, detail="Query must be at least 2 characters.")
-    results = await asyncio.to_thread(geocode.search, q, min(max(limit, 1), 10))
+    results, geo_source = await asyncio.to_thread(geocode.search, q, min(max(limit, 1), 10))
+    source_name = _SOURCE_LABELS.get(geo_source, "unknown")
     return {
         "results": results,
         "count": len(results),
         "data_status": "LIVE" if results else "UNAVAILABLE",
-        "data_source": "OpenStreetMap Nominatim",
+        "data_source": source_name,
         "provider_summary": {
             "status": "LIVE" if results else "UNAVAILABLE",
-            "sources": ["OSM Nominatim"] if results else [],
-            "line": "LIVE from OSM Nominatim" if results else "Geocoder unavailable — no results served",
+            "sources": [source_name] if results else [],
+            "line": (
+                f"LIVE from {source_name}"
+                if results
+                else "No matches found"
+                if geo_source is not None
+                else "Geocoder unavailable — no results served"
+            ),
         },
     }
 
@@ -113,11 +126,11 @@ async def geo_reverse(latitude: float, longitude: float) -> dict:
     """Coordinate → human place name, so GPS fixes can be labeled honestly."""
     from .providers import geocode
 
-    name = await asyncio.to_thread(geocode.reverse, latitude, longitude)
+    name, geo_source = await asyncio.to_thread(geocode.reverse, latitude, longitude)
     return {
         "name": name,
         "data_status": "LIVE" if name else "UNAVAILABLE",
-        "data_source": "OpenStreetMap Nominatim",
+        "data_source": _SOURCE_LABELS.get(geo_source, "unknown"),
     }
 
 
