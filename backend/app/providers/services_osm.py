@@ -14,6 +14,7 @@ from typing import Any
 
 import httpx
 
+from .nominatim_cache import cached
 from .places_osm import OsmUnavailable, overpass_query
 
 # OSM usage policy: descriptive UA with contact URL (same as the other
@@ -134,6 +135,22 @@ def fetch_via_nominatim(
     """
     if _live_disabled():
         raise OsmUnavailable("live providers disabled via TRAVELGUARD_DISABLE_LIVE_PROVIDERS")
+
+    # POI turnover is slow — 30 min makes repeat discoveries near-instant and
+    # spares Nominatim, which rate-limits per User-Agent.
+    def _fetch() -> list[dict[str, Any]]:
+        return _fetch_via_nominatim_uncached(latitude, longitude, radius_m, limit)
+
+    return cached(
+        ("svc", round(latitude, 3), round(longitude, 3), int(radius_m), int(limit)),
+        30 * 60,
+        _fetch,
+    )
+
+
+def _fetch_via_nominatim_uncached(
+    latitude: float, longitude: float, radius_m: int = 8000, limit: int = 20,
+) -> list[dict[str, Any]]:
     vb = _viewbox(latitude, longitude, int(radius_m))
     per_query_limit = str(max(2, int(limit) // len(_NOMINATIM_QUERIES)))
 

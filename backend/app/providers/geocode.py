@@ -17,6 +17,8 @@ import logging
 import os
 from typing import Any
 
+from .nominatim_cache import cached
+
 logger = logging.getLogger("travelguard.geocode")
 
 try:
@@ -28,6 +30,10 @@ _SEARCH_URL = "https://nominatim.openstreetmap.org/search"
 _REVERSE_URL = "https://nominatim.openstreetmap.org/reverse"
 _HEADERS = {"User-Agent": "TravelGuardAI/1.0 (https://github.com/rodrixdcruz/travelguard-ai)"}
 _TIMEOUT = 8.0
+# Place names change on OSM-edit timescales (days) — 6h keeps LIVE honest.
+_SEARCH_TTL = 6 * 60 * 60
+# City-level names for a coordinate — 30 min covers a planning session.
+_REVERSE_TTL = 30 * 60
 
 
 def _live_disabled() -> bool:
@@ -42,24 +48,28 @@ def search(query: str, limit: int = 6) -> list[dict[str, Any]]:
     """
     if httpx is None or not query.strip() or _live_disabled():
         return []
-    try:
-        resp = httpx.get(
-            _SEARCH_URL,
-            params={
-                "q": query.strip(),
-                "format": "jsonv2",
-                "limit": str(min(max(int(limit), 1), 10)),
-                "addressdetails": "0",
-            },
-            headers=_HEADERS,
-            timeout=_TIMEOUT,
-            follow_redirects=True,
-        )
-        resp.raise_for_status()
-        payload = resp.json()
-    except Exception as exc:
-        logger.warning("Nominatim search unavailable (%s)", exc)
-        return []
+
+    def _fetch() -> list[dict[str, Any]]:
+        try:
+            resp = httpx.get(
+                _SEARCH_URL,
+                params={
+                    "q": query.strip(),
+                    "format": "jsonv2",
+                    "limit": str(min(max(int(limit), 1), 10)),
+                    "addressdetails": "0",
+                },
+                headers=_HEADERS,
+                timeout=_TIMEOUT,
+                follow_redirects=True,
+            )
+            resp.raise_for_status()
+            return resp.json() or []
+        except Exception as exc:
+            logger.warning("Nominatim search unavailable (%s)", exc)
+            return []
+
+    payload = cached(("search", query.strip().lower(), limit), _SEARCH_TTL, _fetch)
     out: list[dict[str, Any]] = []
     for row in payload if isinstance(payload, list) else []:
         lat, lon = row.get("lat"), row.get("lon")
@@ -82,19 +92,23 @@ def reverse(latitude: float, longitude: float) -> str | None:
     """Human place name for a coordinate (city-level), or None on failure."""
     if httpx is None or _live_disabled():
         return None
-    try:
-        resp = httpx.get(
-            _REVERSE_URL,
-            params={"lat": str(latitude), "lon": str(longitude), "format": "jsonv2", "zoom": "10"},
-            headers=_HEADERS,
-            timeout=_TIMEOUT,
-            follow_redirects=True,
-        )
-        resp.raise_for_status()
-        data = resp.json()
-    except Exception as exc:
-        logger.warning("Nominatim reverse unavailable (%s)", exc)
-        return None
+
+    def _fetch() -> dict[str, Any] | None:
+        try:
+            resp = httpx.get(
+                _REVERSE_URL,
+                params={"lat": str(latitude), "lon": str(longitude), "format": "jsonv2", "zoom": "10"},
+                headers=_HEADERS,
+                timeout=_TIMEOUT,
+                follow_redirects=True,
+            )
+            resp.raise_for_status()
+            return resp.json()
+        except Exception as exc:
+            logger.warning("Nominatim reverse unavailable (%s)", exc)
+            return None
+
+    data = cached(("reverse", round(latitude, 4), round(longitude, 4)), _REVERSE_TTL, _fetch)
     if not isinstance(data, dict):
         return None
     name = (data.get("name") or "").strip()
