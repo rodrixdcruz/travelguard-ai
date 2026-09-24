@@ -49,6 +49,26 @@ deployment) and can be re-run against current conditions in one click.
 
 ![Recent journeys](docs/screenshots/recent-journeys.png)
 
+**Live discovery (Near Me)** — famous local places, food, safety services and
+transport, all key-less via OpenStreetMap. Categories include attractions with
+lakes, gardens, parks and zoos; bus stands, railway and metro stations, and
+taxi/auto stands — every result labeled LIVE or DEMO by the provider summary
+line.
+
+![Live discovery](docs/screenshots/discovery-live.png)
+
+**Transit POIs on the map** — bus stands and railway stations near Nagpur served
+LIVE through the Overpass → Nominatim fallback chain, plotted on the dark map.
+
+![Transit POIs](docs/screenshots/transit-pois.png)
+
+**Fare comparison** — every journey result compares all 8 transport modes
+(bus, local train, metro, Rapido, auto, Ola, Uber, taxi) cheapest-first, with
+the cheapest highlighted and honest "modeled rate cards, not live fares"
+labeling.
+
+![Fare comparison](docs/screenshots/fare-comparison.png)
+
 ## ML intelligence layer
 
 Hybrid architecture — each layer does only its own job:
@@ -100,6 +120,9 @@ recommendation playground for judges.
 | **Safety briefing** | AI-generated summary (LLM if `AI_API_KEY` is set, deterministic fallback otherwise — never fabricates) |
 | **AI assistant** | `POST /api/ai/chat` — ask "Why is this route risky?", "What is the biggest risk?", "What should I do?" |
 | **Alerts & actions** | Critical alerts per segment + prioritized recommendations, all derived from the computed data |
+| **Live discovery** | Key-less OSM discovery of famous places (incl. lakes, gardens, parks, zoos), food, hospitals, police, pharmacies, ATMs, bus stands, railway/metro stations and taxi/auto stands — provider-labeled LIVE/DEMO with a consistent summary line |
+| **Transport modes & fares** | 8 modeled modes (bus, local train, metro, Rapido, auto, Ola, Uber, taxi) with per-journey cheapest-first fare comparison — honestly ESTIMATED, never live fares |
+| **Multi-day planning** | Plan My Day builds 1–7-day itineraries: unique places per day, meal windows, trip-level time/cost vs a client-set budget |
 
 ## Tech stack
 
