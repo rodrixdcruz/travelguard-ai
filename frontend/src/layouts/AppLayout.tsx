@@ -1,5 +1,6 @@
 import { Link, Outlet, useLocation } from 'react-router-dom'
 import { useTouristLocation } from '../context/LocationContext'
+import CoverageNotice from '../components/CoverageNotice'
 import ModeToggle from '../components/ModeToggle'
 import SosCenter from '../components/SosCenter'
 
@@ -99,6 +100,7 @@ export default function AppLayout() {
       </header>
 
       <main className="flex-1 mx-auto w-full max-w-7xl px-4 sm:px-6 py-6">
+        <CoverageNotice />
         <Outlet />
       </main>
 
