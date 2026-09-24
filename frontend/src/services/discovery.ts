@@ -24,7 +24,46 @@ async function post<T>(path: string, body: unknown): Promise<T> {
   return res.json() as Promise<T>
 }
 
-export function fetchNearbyPlaces(opts: {
+// ── Discovery outcome signal ────────────────────────────────────────────────
+// What live discovery actually returned, keyed by ~1 km coordinate cells.
+// The coverage notice consumes this so it explains real data availability
+// instead of guessing from distance alone.
+
+export interface DiscoveryOutcome {
+  kind: 'places' | 'food' | 'services'
+  count: number
+  status: string
+}
+
+const EMPTY_OUTCOMES: readonly DiscoveryOutcome[] = []
+const outcomeListeners = new Set<() => void>()
+const outcomesByCell = new Map<string, DiscoveryOutcome[]>()
+
+function cellKey(latitude: number, longitude: number): string {
+  return `${Math.round(latitude)}:${Math.round(longitude)}`
+}
+
+function recordOutcome(kind: DiscoveryOutcome['kind'], latitude: number, longitude: number, count: number, status: string): void {
+  const key = cellKey(latitude, longitude)
+  const rest = (outcomesByCell.get(key) ?? []).filter((o) => o.kind !== kind)
+  outcomesByCell.set(key, [...rest, { kind, count, status }])
+  outcomeListeners.forEach((l) => l())
+}
+
+/** Subscribe to discovery-outcome changes (for useSyncExternalStore). */
+export function subscribeDiscoveryOutcomes(listener: () => void): () => void {
+  outcomeListeners.add(listener)
+  return () => {
+    outcomeListeners.delete(listener)
+  }
+}
+
+/** Latest outcomes for a coordinate cell — a stable reference per cell. */
+export function getDiscoveryOutcomes(cell: string): readonly DiscoveryOutcome[] {
+  return outcomesByCell.get(cell) ?? EMPTY_OUTCOMES
+}
+
+export async function fetchNearbyPlaces(opts: {
   latitude: number
   longitude: number
   radius_km?: number
@@ -40,10 +79,14 @@ export function fetchNearbyPlaces(opts: {
   })
   if (opts.category) q.set('category', opts.category)
   if (opts.interest) q.set('interest', opts.interest)
-  return get(`/api/places/nearby?${q}`)
+  const data = await get<{ places: Place[]; count: number; data_status: string; provider_summary: ProviderSummary }>(
+    `/api/places/nearby?${q}`,
+  )
+  recordOutcome('places', opts.latitude, opts.longitude, data.count, data.data_status)
+  return data
 }
 
-export function fetchNearbyFood(opts: {
+export async function fetchNearbyFood(opts: {
   latitude: number
   longitude: number
   radius_km?: number
@@ -61,10 +104,14 @@ export function fetchNearbyFood(opts: {
   if (opts.vegetarian !== undefined) q.set('vegetarian', String(opts.vegetarian))
   if (opts.budget !== undefined) q.set('budget', String(opts.budget))
   if (opts.cuisine) q.set('cuisine', opts.cuisine)
-  return get(`/api/food/nearby?${q}`)
+  const data = await get<{ food: FoodPlace[]; count: number; data_status: string; provider_summary: ProviderSummary }>(
+    `/api/food/nearby?${q}`,
+  )
+  recordOutcome('food', opts.latitude, opts.longitude, data.count, data.data_status)
+  return data
 }
 
-export function fetchNearbyServices(opts: {
+export async function fetchNearbyServices(opts: {
   latitude: number
   longitude: number
   radius_km?: number
@@ -78,7 +125,11 @@ export function fetchNearbyServices(opts: {
     limit: String(opts.limit ?? 20),
   })
   if (opts.service_type) q.set('service_type', opts.service_type)
-  return get(`/api/services/nearby?${q}`)
+  const data = await get<{ services: LocalService[]; count: number; data_status: string; provider_summary: ProviderSummary }>(
+    `/api/services/nearby?${q}`,
+  )
+  recordOutcome('services', opts.latitude, opts.longitude, data.count, data.data_status)
+  return data
 }
 
 export function planDay(req: {

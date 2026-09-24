@@ -12,6 +12,7 @@ from typing import Any, Optional
 from .places import _with_distance
 from .demo_mumbai import DEMO_FOOD
 from .food_osm import fetch_nearby as osm_fetch_nearby
+from .geoapify_places import GeoapifyUnavailable, fetch_food as geoapify_fetch_food
 from .places_osm import OsmUnavailable
 
 logger = logging.getLogger("travelguard.food")
@@ -45,13 +46,20 @@ def fetch_nearby(
     limit = max(1, min(int(limit), 50))
     radius_km = max(0.2, min(float(radius_km), 40.0))
 
-    # LIVE-first: real OSM eateries win when the provider answers.
+    # LIVE-first, three tiers: keyed Geoapify (datacenter-friendly OSM data),
+    # then key-less Overpass, then the labeled demo dataset. A keyed provider
+    # that legitimately finds nothing returns [] — reported as-is, no masking.
     try:
-        live = osm_fetch_nearby(latitude, longitude, radius_m=int(radius_km * 1000), limit=limit)
+        live = geoapify_fetch_food(latitude, longitude, radius_m=int(radius_km * 1000), limit=limit)
         results = [_with_distance(f, latitude, longitude) for f in live]
-    except OsmUnavailable as exc:
-        logger.warning("Live food unavailable (%s) — serving DEMO fallback", exc)
-        results = [_with_distance(f, latitude, longitude) for f in DEMO_FOOD]
+    except GeoapifyUnavailable as exc:
+        logger.info("Geoapify food unavailable (%s) — trying Overpass", exc)
+        try:
+            live = osm_fetch_nearby(latitude, longitude, radius_m=int(radius_km * 1000), limit=limit)
+            results = [_with_distance(f, latitude, longitude) for f in live]
+        except OsmUnavailable as exc2:
+            logger.warning("Live food unavailable (%s) — serving DEMO fallback", exc2)
+            results = [_with_distance(f, latitude, longitude) for f in DEMO_FOOD]
     results = [f for f in results if f["distance_km"] <= radius_km]
 
     if vegetarian is True:

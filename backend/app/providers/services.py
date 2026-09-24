@@ -13,6 +13,7 @@ from typing import Any, Optional
 from .places import _with_distance
 from .demo_mumbai import DEMO_SERVICES
 from .services_osm import fetch_nearby as osm_fetch_nearby
+from .geoapify_places import GeoapifyUnavailable, fetch_services as geoapify_fetch_services
 from .places_osm import OsmUnavailable
 
 logger = logging.getLogger("travelguard.services")
@@ -36,13 +37,20 @@ def fetch_nearby(
     limit = max(1, min(int(limit), 50))
     radius_km = max(0.2, min(float(radius_km), 40.0))
 
-    # LIVE-first: real OSM services (hospitals, police…) win when available.
+    # LIVE-first, three tiers: keyed Geoapify (datacenter-friendly OSM data —
+    # includes metro/train/bus stops), then key-less Overpass (+ its Nominatim
+    # fallback), then the labeled demo dataset. Honest empty stays empty.
     try:
-        live = osm_fetch_nearby(latitude, longitude, radius_m=int(radius_km * 1000), limit=limit)
+        live = geoapify_fetch_services(latitude, longitude, radius_m=int(radius_km * 1000), limit=limit)
         results = [_with_distance(s, latitude, longitude) for s in live]
-    except OsmUnavailable as exc:
-        logger.warning("Live services unavailable (%s) — serving DEMO fallback", exc)
-        results = [_with_distance(s, latitude, longitude) for s in DEMO_SERVICES]
+    except GeoapifyUnavailable as exc:
+        logger.info("Geoapify services unavailable (%s) — trying Overpass", exc)
+        try:
+            live = osm_fetch_nearby(latitude, longitude, radius_m=int(radius_km * 1000), limit=limit)
+            results = [_with_distance(s, latitude, longitude) for s in live]
+        except OsmUnavailable as exc2:
+            logger.warning("Live services unavailable (%s) — serving DEMO fallback", exc2)
+            results = [_with_distance(s, latitude, longitude) for s in DEMO_SERVICES]
     results = [s for s in results if s["distance_km"] <= radius_km]
 
     if service_type:
