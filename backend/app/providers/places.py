@@ -19,6 +19,7 @@ from typing import Any, Optional
 from .demo_mumbai import DEMO_PLACES
 from .places_osm import OsmUnavailable, fetch_nearby as osm_fetch_nearby
 from .places_wiki import WikiUnavailable, fetch_notable as wiki_fetch_notable
+from .geoapify_places import GeoapifyUnavailable, fetch_places as geoapify_fetch_places
 
 logger = logging.getLogger("travelguard.places")
 
@@ -65,21 +66,45 @@ def fetch_nearby(
     limit = max(1, min(int(limit), 50))
     radius_km = max(0.2, min(float(radius_km), 60.0))
 
-    # LIVE-first, two tiers: notable places (Wikipedia) then broad POIs (OSM).
+    # LIVE-first fusion: keyed Geoapify POIs + notable places (Wikipedia).
+    # Geoapify (same OSM data, datacenter-friendly infrastructure) fills the
+    # map with leisure spots (lakes, zoos, parks, theme parks) that wiki
+    # titles miss; wiki adds the famous landmarks. Dedup by ~50 m proximity,
+    # nearest-first. Both fail → OSM Overpass → demo dataset.
     if not category:
+        fused: list[dict[str, Any]] = []
         try:
-            wiki = wiki_fetch_notable(
-                latitude,
-                longitude,
-                radius_m=int(radius_km * 1000),
-                limit=limit,
+            fused.extend(
+                geoapify_fetch_places(
+                    latitude, longitude, radius_m=int(radius_km * 1000), limit=limit
+                )
             )
-            if wiki:
-                results = [_with_distance(p, latitude, longitude) for p in wiki]
-                results.sort(key=lambda p: p["distance_km"])
-                return results[:limit]
+        except GeoapifyUnavailable as exc:
+            logger.info("Geoapify places unavailable (%s) — wiki/OSM tiers next", exc)
+        try:
+            fused.extend(
+                wiki_fetch_notable(
+                    latitude,
+                    longitude,
+                    radius_m=int(radius_km * 1000),
+                    limit=limit,
+                )
+            )
         except WikiUnavailable as exc:
             logger.warning("Wikipedia places unavailable (%s) — trying OSM", exc)
+        if fused:
+            seen_coords: list[tuple[float, float]] = []
+            deduped: list[dict[str, Any]] = []
+            for p in fused:
+                if all(
+                    haversine_km(p["latitude"], p["longitude"], a, b) > 0.05
+                    for a, b in seen_coords
+                ):
+                    seen_coords.append((p["latitude"], p["longitude"]))
+                    deduped.append(p)
+            results = [_with_distance(p, latitude, longitude) for p in deduped]
+            results.sort(key=lambda p: p["distance_km"])
+            return results[:limit]
 
     try:
         live = osm_fetch_nearby(

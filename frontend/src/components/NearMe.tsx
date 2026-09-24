@@ -90,6 +90,12 @@ export default function NearMe() {
     const filtered = allMarkers.filter((m) => allowed.includes(m.kind))
     if (activeButton === 'ALL' || !NEAR_ME_BUTTONS.some((b) => b.key === activeButton)) return filtered
     const btn = NEAR_ME_BUTTONS.find((b) => b.key === activeButton)
+    if (btn?.serviceType === 'transport') {
+      // Transport shows every transit kind — the generic `transport` class
+      // alone misses metro/railway/bus/taxi stops.
+      const transitKinds = ['transport', 'bus_stand', 'railway_station', 'metro_station', 'taxi', 'auto_stand']
+      return filtered.filter((m) => transitKinds.includes(m.category))
+    }
     if (btn?.serviceType) {
       return filtered.filter((m) => m.category === btn.serviceType)
     }

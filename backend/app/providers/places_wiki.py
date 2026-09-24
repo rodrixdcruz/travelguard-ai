@@ -28,11 +28,15 @@ USER_AGENT = "TravelGuardAI/0.1 (https://github.com/rodrixdcruz/travelguard-ai)"
 TIMEOUT = httpx.Timeout(10.0, connect=4.0)
 MAX_RADIUS_M = 10000  # MediaWiki hard limit for gsradius
 
-# Words in titles that mark infrastructure/non-POI articles (metro stations
-# etc. dominate dense-city geosearch and crowd out actual attractions).
+# Words in titles that mark transport infrastructure rather than visitable
+# attractions (metro/railway/bus stations dominate dense-city geosearch).
+# They are EXCLUDED from place discovery — the services layer serves transit
+# stops (LIVE) for the Transport tab, so stations never pollute Attractions.
 _DEMOTE_SUBSTRINGS = (
     "metro station",
     "railway station",
+    "railway halt",
+    "bus station",
 )
 
 # Articles that geosearch matches by coordinates but that are NOT visitable
@@ -58,12 +62,19 @@ _EXCLUDE_SUBSTRINGS = (
     "airport authority",
 )
 
-
 # Title-keyword → discovery category. Wikipedia geosearch returns article
 # titles, not OSM tags — a lake is "Ambazari Lake", a zoo is "[X] Zoo" —
 # so classify from the title (first match wins; checked in specificity order).
 _TITLE_CATEGORIES = (
     ("zoo", "zoo"),
+    ("water park", "park"),
+    ("amusement park", "park"),
+    ("theme park", "park"),
+    ("national park", "park"),
+    ("sanctuary", "park"),
+    ("waterfall", "nature"),
+    ("beach", "nature"),
+    ("island", "nature"),
     ("lake", "lake"),
     ("garden", "garden"),
     ("park", "park"),
@@ -138,7 +149,8 @@ def fetch_notable(
         lowered = title.lower()
         if any(s in lowered for s in _EXCLUDE_SUBSTRINGS):
             continue
-        demoted = any(s in lowered for s in _DEMOTE_SUBSTRINGS)
+        if any(s in lowered for s in _DEMOTE_SUBSTRINGS):
+            continue
         out.append(
             {
                 "id": f"wiki-{p.get('pageid', title[:24])}",
@@ -150,14 +162,14 @@ def fetch_notable(
                 "address": "",
                 "opening_hours": "Unknown",
                 "rating": None,
-                "tags": ["notable", "wikipedia"] + (["station"] if demoted else []),
+                "tags": ["notable", "wikipedia"],
                 "data_source": "wikipedia_geosearch",
                 "data_status": "LIVE",
-                "_rank": (1, title) if demoted else (0, title),
+                "_rank": (0, title),
             }
         )
 
-    # Demoted entries (stations) after genuine attractions, alphabetical within.
+    # Alphabetical within the notable set; stations never reach here.
     out.sort(key=lambda p: p["_rank"])
     for p in out:
         p.pop("_rank", None)
