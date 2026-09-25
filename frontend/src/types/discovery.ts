@@ -27,6 +27,10 @@ export interface FoodPlace {
   cuisine: string
   vegetarian: boolean
   non_vegetarian: boolean
+  /** Conservative name-based veg likelihood (backend INFERRED) — null when
+   * the row carries real diet tags or the name makes no claim. Never merges
+   * into `vegetarian`, which stays strict (real tags only). */
+  veg_hint: boolean | null
   price_range: string
   rating: number | null
   latitude: number

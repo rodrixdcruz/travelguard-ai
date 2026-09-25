@@ -82,12 +82,13 @@ def test_fetch_food_shape(monkeypatch):
                  extra={"raw": {"diet:vegetarian": "yes", "cuisine": "coffee_shop"}}),
         _feature("Vegan Corner", 21.16, 79.10, ["catering", "catering.restaurant"],
                  extra={"raw": {"diet:vegan": "only"}}),
+        _feature("Jain Bhojanalaya", 21.17, 79.11, ["catering", "catering.restaurant.indian"]),
     ]
     monkeypatch.setattr(
         geoapify_places, "_search", lambda *a, **k: features
     )
     out = geoapify_places.fetch_food(21.1458, 79.0882, radius_m=8000, limit=10)
-    assert [o["name"] for o in out] == ["Haldiram", "Cafe Mocha", "Vegan Corner"]
+    assert [o["name"] for o in out] == ["Haldiram", "Cafe Mocha", "Vegan Corner", "Jain Bhojanalaya"]
     assert all(o["data_status"] == "LIVE" for o in out)
     assert all(o["data_source"] == "geoapify_places" for o in out)
     assert out[0]["cuisine"] == "Indian"
@@ -96,6 +97,10 @@ def test_fetch_food_shape(monkeypatch):
     assert out[0]["vegetarian"] is False
     assert out[1]["vegetarian"] is True
     assert out[2]["vegetarian"] is True  # vegan=only implies vegetarian
+    # diet-tagged rows carry NO name-based hint; untagged ones do
+    assert out[1]["veg_hint"] is None
+    assert out[0]["veg_hint"] is None  # 'Haldiram' is a neutral name
+    assert out[3]["veg_hint"] is True  # name-only inference, clearly separated
     # honesty: fields the API does not carry stay None/defaults
     assert out[0]["price_range"] is None
     assert out[0]["rating"] is None
