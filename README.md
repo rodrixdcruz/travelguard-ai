@@ -6,6 +6,8 @@
 
 **Know the Risk Before You Reach It.**
 
+[![CI](https://github.com/rodrixdcruz/travelguard-ai/actions/workflows/ci.yml/badge.svg)](https://github.com/rodrixdcruz/travelguard-ai/actions/workflows/ci.yml)
+
 ![30-second Live-mode walkthrough](docs/gif/walkthrough.gif)
 
 *Live mode end-to-end: honest location prompt → Nagpur via real place search →
@@ -105,13 +107,40 @@ fallback, honestly labeled.
 cd backend
 python -m app.ml.train        # generates data if missing, trains both models, prints real MAE/R²
 python -m app.ml.evaluate     # recompute metrics on a held-out split
-python -m pytest tests/ -q    # 20 tests: features, ordering, fallback, ranking, optimizer, API
+python -m pytest tests/ -q    # full suite: features, ordering, fallback, ranking, optimizer, API
 ```
 
 Artifacts land in `models/` (git-ignored; reproducible). ML endpoints:
 `POST /api/ml/safety-predict`, `POST /api/ml/recommend`, `POST /api/ml/itinerary`,
 `GET /api/ml/info`. The Settings page hosts the live ML-pipeline demo and the
 recommendation playground for judges.
+
+---
+
+## Tests & honesty guarantees
+
+CI runs on every push/PR (badge at the top): **backend pytest on Python 3.12**
+and the exact **frontend production build** (`tsc -b && vite build`) that Render
+deploys. The backend suite is fully hermetic — `TRAVELGUARD_DISABLE_LIVE_PROVIDERS=1`
+makes every live provider honor the kill-switch, so tests make **zero external
+HTTP calls** (no flaky network, no provider quota burn) while still exercising
+the fallback paths. The suite currently reports 144 passing tests in CI.
+
+What the tests lock down — the guarantees a demo reviewer can rely on:
+
+| Guarantee | How it's tested |
+|---|---|
+| **Every record carries its data status** | Providers emit `LIVE` / `DEMO` / `ESTIMATED` / `UNAVAILABLE` and the API reports the *actual* status of what was served (`test_provider_summary`, `test_discovery`) |
+| **Honest fallback chains** | Geoapify → key-less OSM → labeled DEMO: a provider that legitimately finds nothing returns an honest empty — never masked with demo data (`test_geoapify_places`, `test_discovery`) |
+| **Nothing is fabricated** | Missing phone numbers, prices and diet tags stay `None`/omitted — the UI says "unavailable in current data" instead of guessing (`test_geoapify_places`, `test_discovery`) |
+| **Inference is labeled, never merged** | Name-based veg hints live in a separate `veg_hint` field: tags win over hints, hints never satisfy the strict `vegetarian` filter, demo rows never get hints (`test_veg_hints`) |
+| **No kind crowds out another** | Services and transport discovery fan out per category with pagination + dedup, so a dense hospital/bus cluster can't hide pharmacies, ATMs or metro stops (`test_geoapify_places`) |
+| **ML is honest about itself** | Missing model artifacts → transparent `rule_based_demo` fallback; scoring blends and intelligence modes are reported, and training data is synthetic & documented (`test_ml`) |
+
+```bash
+cd backend
+python -m pytest tests/ -q   # hermetic: no network, no keys needed
+```
 
 ---
 
