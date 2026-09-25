@@ -31,6 +31,36 @@
   inset: 0;
 }
 
+/* One-shot highlight: three quick bright pulses after a GPS fix, then the
+   normal halo takes over. */
+@keyframes you-are-here-flash {
+  0% {
+    transform: scale(0.5);
+    opacity: 0.95;
+  }
+  60% {
+    transform: scale(2.6);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(2.6);
+    opacity: 0;
+  }
+}
+
+.you-are-here-flash-wrap {
+  position: absolute;
+  inset: 0;
+}
+
+.you-are-here-flash {
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  background: rgba(103, 232, 249, 0.8);
+  animation: you-are-here-flash 0.9s ease-out 3;
+}
+
 
 @layer base {
   html {

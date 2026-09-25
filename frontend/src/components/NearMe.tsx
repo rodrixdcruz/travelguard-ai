@@ -69,6 +69,14 @@ export default function NearMe() {
   const [mapBbox, setMapBbox] = useState<{ lat1: number; lon1: number; lat2: number; lon2: number } | null>(null)
   const transportAbortRef = useRef<AbortController | null>(null)
 
+  // GPS fly-to: each "use my location" bumps the nonce so the map animates to
+  // the new fix; the dot flashes briefly on arrival. While the map-bounds
+  // mode is on, the old bbox is cleared on arrival so transport discovery
+  // re-runs against the NEW visible area, never the stale one.
+  const [flyNonce, setFlyNonce] = useState(0)
+  const [flash, setFlash] = useState(false)
+  const flashTimerRef = useRef<number | null>(null)
+
   useEffect(() => {
     // Live mode, no location yet: nothing to discover (never silently Mumbai).
     if (needsLocation) {
@@ -203,8 +211,14 @@ export default function NearMe() {
   async function useMyLocation() {
     setLocating(true)
     setLocError(null)
+    setFlash(false)
+    if (flashTimerRef.current !== null) {
+      window.clearTimeout(flashTimerRef.current)
+      flashTimerRef.current = null
+    }
     try {
       const loc = await browserLocation()
+      setFlyNonce((n) => n + 1) // animate the map to the fresh GPS fix
       setLocation(loc)
     } catch (e) {
       setLocError(
@@ -214,6 +228,16 @@ export default function NearMe() {
     } finally {
       setLocating(false)
     }
+  }
+
+  function onFlyArrival() {
+    // Brief highlight of the you-are-here dot after the fly lands. Discovery
+    // itself needs no nudge here: radius mode re-ran on the location change,
+    // and map-bounds mode re-runs because the fly's moveend makes the
+    // BoundsReporter emit the NEW visible area as the bbox.
+    setFlash(true)
+    if (flashTimerRef.current !== null) window.clearTimeout(flashTimerRef.current)
+    flashTimerRef.current = window.setTimeout(() => setFlash(false), 2800)
   }
 
   function pickButton(key: string) {
@@ -421,6 +445,10 @@ export default function NearMe() {
                 ? null
                 : { latitude: location.latitude, longitude: location.longitude, name: location.name }
             }
+            userFlashing={flash}
+            flyTarget={flyNonce > 0 && !needsLocation ? { lat: location.latitude, lon: location.longitude } : null}
+            flyNonce={flyNonce}
+            onFlyArrival={onFlyArrival}
             onBounds={useMapBounds ? (b) => {
               if (!b) return
               // Round the bbox onto a ~0.05° (~5 km) grid so ordinary panning

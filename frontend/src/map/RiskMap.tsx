@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { MapContainer, TileLayer, Polyline, Marker, useMap } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
 import L from 'leaflet'
@@ -43,6 +43,63 @@ function BoundsReporter({ onBounds }: { onBounds: (b: { lat1: number; lon1: numb
   return null
 }
 
+/**
+ * Animated fly-to for a fresh GPS fix (or any location reselection). The
+ * nonce changes per fix; ``untilMoveEnd`` suppresses marker auto-fit during
+ * the animation so it can finish, and notifies the parent on arrival so
+ * area-based discovery can re-run against the new view.
+ */
+function FlyTo({
+  target,
+  nonce,
+  untilMoveEnd,
+  onArrival,
+}: {
+  target: { lat: number; lon: number }
+  nonce: number
+  untilMoveEnd: (v: boolean) => void
+  onArrival?: () => void
+}) {
+  const map = useMap()
+  const lastNonce = useRef(0)
+  // Latest-ref pattern: parents pass inline callbacks that change identity on
+  // every render. If they were effect deps, a mid-flight re-render (discovery
+  // results landing) would tear down the moveend listener and the arrival
+  // callback would never fire. The flight is registered ONCE per nonce.
+  const arrivalRef = useRef(onArrival)
+  arrivalRef.current = onArrival
+  const untilRef = useRef(untilMoveEnd)
+  untilRef.current = untilMoveEnd
+  const targetRef = useRef(target)
+  targetRef.current = target
+  useEffect(() => {
+    const tgt = targetRef.current
+    if (!tgt || nonce === lastNonce.current) return
+    lastNonce.current = nonce
+    const current = map.getCenter()
+    // Same spot as the current view: skip the animation, arrive immediately.
+    if (map.distance(current, [tgt.lat, tgt.lon]) < 50) {
+      arrivalRef.current?.()
+      return
+    }
+    untilRef.current(true)
+    let alive = true
+    const onDone = () => {
+      if (!alive) return
+      untilRef.current(false)
+      arrivalRef.current?.()
+    }
+    map.once('moveend', onDone)
+    map.flyTo([tgt.lat, tgt.lon], 13, { duration: 1.2 })
+    return () => {
+      alive = false
+      map.off('moveend', onDone)
+      untilRef.current(false)
+    }
+  }, [nonce, map])
+  return null
+}
+
 const icon = L.divIcon({
   className: '',
   html: `<div style="width:14px;height:14px;border-radius:50%;background:#22d3ee;box-shadow:0 0 12px #22d3ee88;border:2px solid #ffffffcc"></div>`,
@@ -58,18 +115,21 @@ const destIcon = L.divIcon({
 })
 
 /** Pulsing "you are here" halo + dot for the user's selected location. */
-const userHereIcon = L.divIcon({
-  className: '',
-  html: `
-    <div style="position:relative;width:34px;height:34px">
-      <div class="you-are-here-halo-wrap"><div class="you-are-here-halo"></div></div>
-      <div style="position:absolute;left:50%;top:50%;width:14px;height:14px;margin:-7px 0 0 -7px;
-        border-radius:50%;background:#22d3ee;border:2.5px solid #ffffff;
-        box-shadow:0 0 10px #22d3eecc"></div>
-    </div>`,
-  iconSize: [34, 34],
-  iconAnchor: [17, 17],
-})
+function userHereIcon(flash: boolean): L.DivIcon {
+  return L.divIcon({
+    className: '',
+    html: `
+      <div style="position:relative;width:34px;height:34px">
+        <div class="you-are-here-halo-wrap"><div class="you-are-here-halo"></div></div>
+        ${flash ? '<div class="you-are-here-flash-wrap"><div class="you-are-here-flash"></div></div>' : ''}
+        <div style="position:absolute;left:50%;top:50%;width:14px;height:14px;margin:-7px 0 0 -7px;
+          border-radius:50%;background:#22d3ee;border:2.5px solid #ffffff;
+          box-shadow:0 0 10px #22d3eecc"></div>
+      </div>`,
+    iconSize: [34, 34],
+    iconAnchor: [17, 17],
+  })
+}
 
 function markerIcon(marker: MapMarker, selected: boolean): L.DivIcon {
   const meta = KIND_META[marker.kind] ?? KIND_META.attraction
@@ -102,6 +162,15 @@ interface Props {
   onBounds?: (b: { lat1: number; lon1: number; lat2: number; lon2: number } | null) => void
   /** Selected location — rendered as a distinct pulsing "you are here" dot. */
   userLocation?: { latitude: number; longitude: number; name: string } | null
+  /**
+   * Fly the map to this point when ``flyNonce`` changes (GPS fix / fresh
+   * selection). ``onFlyArrival`` fires once the animation lands.
+   */
+  flyTarget?: { lat: number; lon: number } | null
+  flyNonce?: number
+  onFlyArrival?: () => void
+  /** Brief bright-flash highlight of the you-are-here dot. */
+  userFlashing?: boolean
 }
 
 export default function RiskMap({
@@ -117,6 +186,10 @@ export default function RiskMap({
   heightClass = 'h-full w-full',
   onBounds,
   userLocation = null,
+  flyTarget = null,
+  flyNonce = 0,
+  onFlyArrival,
+  userFlashing = false,
 }: Props) {
   const routePoints = useMemo(() => segments.flatMap((s) => s.path), [segments])
   const center: [number, number] = useMemo(() => {
@@ -146,6 +219,10 @@ export default function RiskMap({
     () => markers.map((m) => [m.latitude, m.longitude] as [number, number]),
     [markers],
   )
+
+  // Hold marker auto-fit while a fly-to animation is in progress — otherwise
+  // new markers landing mid-flight would cancel the animation.
+  const [flying, setFlying] = useState(false)
 
   return (
     <MapContainer
@@ -177,7 +254,7 @@ export default function RiskMap({
           <FitRoute points={routePoints.map((p) => [p.lat, p.lon] as [number, number])} />
         </>
       )}
-      {segments.length === 0 && markerPoints.length > 0 && fitToMarkers && (
+      {segments.length === 0 && markerPoints.length > 0 && fitToMarkers && !flying && (
         <FitMarkers points={markerPoints} />
       )}
       {markers.map((m) => (
@@ -191,13 +268,21 @@ export default function RiskMap({
       {userLocation && (
         <Marker
           position={[userLocation.latitude, userLocation.longitude]}
-          icon={userHereIcon}
+          icon={userHereIcon(userFlashing)}
           interactive={false}
           zIndexOffset={1000}
-          key={`you-are-here-${userLocation.latitude}-${userLocation.longitude}`}
+          key={`you-are-here-${userLocation.latitude}-${userLocation.longitude}-${userFlashing ? 'flash' : 'calm'}`}
         />
       )}
       {onBounds && <BoundsReporter onBounds={onBounds} />}
+      {flyTarget && (
+        <FlyTo
+          target={flyTarget}
+          nonce={flyNonce}
+          untilMoveEnd={setFlying}
+          onArrival={onFlyArrival}
+        />
+      )}
     </MapContainer>
   )
 }
