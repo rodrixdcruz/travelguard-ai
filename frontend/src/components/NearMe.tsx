@@ -416,6 +416,11 @@ export default function NearMe() {
             selectedMarkerId={selected}
             onSelectMarker={setSelected}
             fitToMarkers
+            userLocation={
+              needsLocation
+                ? null
+                : { latitude: location.latitude, longitude: location.longitude, name: location.name }
+            }
             onBounds={useMapBounds ? (b) => {
               if (!b) return
               // Round the bbox onto a ~0.05° (~5 km) grid so ordinary panning
