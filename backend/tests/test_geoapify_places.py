@@ -468,7 +468,12 @@ def test_transport_pagination_stops_safely_at_cap(monkeypatch):
 
     monkeypatch.setattr(geoapify_places, "_search", _runaway)
     out = geoapify_places.fetch_transport(21.1458, 79.0882, radius_m=5000)
-    assert len(out["stops"]) == 5  # hard cap reached, loop terminated
+    # Every one of the 8 groups answered with endless full pages; each must
+    # stop exactly at its own cap (5) and the loop must terminate.
+    assert len(out["stops"]) == 8 * 5
+    from collections import Counter
+    per_group = Counter(s["id"].rsplit("-", 2)[0] for s in out["stops"])
+    assert all(count == 5 for count in per_group.values())
 
     monkeypatch.setattr(geoapify_places, "TRANSPORT_MAX_PER_GROUP", 500)
     monkeypatch.setattr(geoapify_places, "_search", _transport_stub({
