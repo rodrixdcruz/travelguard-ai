@@ -71,6 +71,19 @@ def test_food_budget_filter_respects_price_class():
     assert cheap and all(f["price_range"] in ("₹", "₹₹") for f in cheap)
 
 
+def test_food_budget_filter_keeps_unpriced_live_rows():
+    """Unpriced rows (price_range=None — OSM has no price class) are budget-
+    class, not silently excluded: with live data the BUDGET filter must not
+    return empty where places exist."""
+    results = [
+        {"price_range": "₹"}, {"price_range": None}, {"price_range": "₹₹₹"},
+    ]
+    kept = [f for f in results
+            if food_provider.PRICE_CLASS_ESTIMATE.get(f["price_range"],
+                                                      food_provider.PRICE_CLASS_ESTIMATE["₹"]) <= 200]
+    assert [f["price_range"] for f in kept] == ["₹", None]
+
+
 def test_food_cuisine_filter():
     cafes = food_provider.fetch_nearby(*GATEWAY, radius_km=40, cuisine="cafe", limit=30)
     assert cafes and all("cafe" in f["cuisine"].lower() for f in cafes)

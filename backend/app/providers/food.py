@@ -29,7 +29,9 @@ STYLE_FILTERS = {
     "non-vegetarian": None,
     "cafe": None,           # handled by cuisine contains 'cafe'
     "family": None,
-    "budget": {"₹", "₹₹"},
+    # ₹ covers every unpriced live row: OSM carries no reliable price class,
+    # so None must not silently fail the budget check.
+    "budget": {"₹", "₹₹", None},
     "premium": {"₹₹₹", "₹₹₹₹"},
 }
 
@@ -69,9 +71,11 @@ def fetch_nearby(
 
     if budget is not None:
         budget = max(0, int(budget))
+        # Unpriced live rows are treated as budget-class (₹ estimate) rather
+        # than silently excluded — their price is simply not mapped in OSM.
         results = [
             f for f in results
-            if PRICE_CLASS_ESTIMATE.get(f["price_range"], 400) <= budget
+            if PRICE_CLASS_ESTIMATE.get(f["price_range"], PRICE_CLASS_ESTIMATE["₹"]) <= budget
         ]
 
     if cuisine:
