@@ -24,6 +24,7 @@ from typing import Any, Optional
 import httpx
 
 from .nominatim_cache import cached
+from .veg_hints import apply_veg_hint
 
 logger = logging.getLogger("travelguard.geoapify_places")
 
@@ -279,9 +280,9 @@ def fetch_food(latitude: float, longitude: float, radius_m: int = 8000, limit: i
         veg = veg_tag in ("yes", "only") or vegan_only
         nonveg = (str(raw.get("diet:non-vegetarian", "")).lower() in ("yes", "only")
                   or not veg)
+        diet_tagged = veg or str(raw.get("diet:non-vegetarian", "")).lower() in ("yes", "only")
         price = raw.get("charge") or raw.get("price") or None
-        out.append(
-            {
+        row = {
                 "id": f"geoapify-{str(props.get('place_id', name[:24]))[:32]}",
                 "name": name[:120],
                 "cuisine": cuisine[:80],
@@ -296,7 +297,9 @@ def fetch_food(latitude: float, longitude: float, radius_m: int = 8000, limit: i
                 "data_source": "geoapify_places",
                 "data_status": "LIVE",
             }
-        )
+        # Conservative name-based hint when no real diet tags were mapped
+        # (a separate ``veg_hint`` field — never merged into ``vegetarian``).
+        out.append(apply_veg_hint(row, diet_tagged=diet_tagged))
     return out
 
 

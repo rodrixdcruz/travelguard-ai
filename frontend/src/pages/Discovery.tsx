@@ -559,6 +559,11 @@ type FoodFilter = (typeof FOOD_FILTERS)[number]
  * implying the area has no such food. */
 const UNVERIFIABLE_FOOD_FILTERS: ReadonlySet<FoodFilter> = new Set(['VEG', 'STREET FOOD', 'BUDGET'])
 
+/** VEG matches tagged vegetarian rows AND conservative name-based hints
+ * (backend-inferred from unambiguous naming like "Pure Veg"/"Jain"). Hints
+ * are labeled VEG · INFERRED in the UI — never merged into the strict flag. */
+const vegLikely = (f: import('../types/discovery').FoodPlace) => f.vegetarian || f.veg_hint === true
+
 export function FoodNearYou() {
   const { location, needsLocation } = useTouristLocation()
   const [food, setFood] = useState<import('../types/discovery').FoodPlace[] | null>(null)
@@ -588,7 +593,7 @@ export function FoodNearYou() {
   const filtered = useMemo(() => {
     if (!food) return []
     switch (filter) {
-      case 'VEG': return food.filter((f) => f.vegetarian)
+      case 'VEG': return food.filter(vegLikely)
       case 'NON-VEG': return food.filter((f) => f.non_vegetarian)
       case 'STREET FOOD': return food.filter((f) => f.cuisine.toLowerCase().includes('street'))
       case 'CAFE': return food.filter((f) => f.cuisine.toLowerCase().includes('cafe'))
@@ -652,7 +657,23 @@ export function FoodNearYou() {
                   </span>
                   <div className="flex items-center gap-1.5">
                     {f.vegetarian && <span className="text-[9px] font-bold tracking-widest text-emerald-300 border border-emerald-400/30 rounded px-1.5 py-0.5">VEG</span>}
-                    {f.non_vegetarian && !f.vegetarian && <span className="text-[9px] font-bold tracking-widest text-rose-300 border border-rose-400/30 rounded px-1.5 py-0.5">NON-VEG</span>}
+                    {!f.vegetarian && f.veg_hint === true && (
+                      <span
+                        title="Name suggests vegetarian (e.g. “Pure Veg”, “Jain”) — inferred from the eatery's name, not confirmed data. The name may not reflect the menu."
+                        className="text-[9px] font-bold tracking-widest text-emerald-200/80 border border-emerald-300/20 border-dashed rounded px-1.5 py-0.5 cursor-help"
+                      >
+                        VEG · INFERRED
+                      </span>
+                    )}
+                    {f.veg_hint === false && !f.vegetarian && (
+                      <span
+                        title="Name suggests non-vegetarian (e.g. chicken, kebab, biryani) — inferred from the eatery's name, not confirmed data."
+                        className="text-[9px] font-bold tracking-widest text-rose-300/80 border border-rose-400/20 border-dashed rounded px-1.5 py-0.5 cursor-help"
+                      >
+                        NON-VEG · INFERRED
+                      </span>
+                    )}
+                    {f.non_vegetarian && f.veg_hint !== false && !f.vegetarian && <span className="text-[9px] font-bold tracking-widest text-rose-300 border border-rose-400/30 rounded px-1.5 py-0.5">NON-VEG</span>}
                     <DataBadge status={f.data_status} />
                   </div>
                 </div>
@@ -671,7 +692,9 @@ export function FoodNearYou() {
               <Panel>
                 <p className="text-sm text-slate-500">
                   {food.length > 0 && UNVERIFIABLE_FOOD_FILTERS.has(filter)
-                    ? `No ${filter === 'VEG' ? 'vegetarian' : filter.toLowerCase()} places are identifiable in the live map data here — diet and price tags are sparsely mapped. Try ALL.`
+                    ? filter === 'VEG'
+                      ? 'No tagged or name-suggested vegetarian places found in the live map data here — diet tags are sparsely mapped in OSM. Try ALL.'
+                      : `No ${filter.toLowerCase()} places are identifiable in the live map data here — diet and price tags are sparsely mapped. Try ALL.`
                     : 'No food places match this filter nearby.'}
                 </p>
               </Panel>

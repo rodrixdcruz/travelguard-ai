@@ -13,6 +13,7 @@ from typing import Any
 
 
 from .places_osm import OsmUnavailable, overpass_query
+from .veg_hints import apply_veg_hint
 
 logger = logging.getLogger("travelguard.food_osm")
 
@@ -39,6 +40,7 @@ def _normalize(el: dict[str, Any]) -> dict[str, Any] | None:
     veg = tags.get("diet:vegetarian", "") in ("yes", "only")
     vegan_only = tags.get("diet:vegan", "") == "only"
     nonveg = tags.get("diet:non-vegetarian", "") in ("yes", "only") or not (veg or vegan_only)
+    diet_tagged = veg or tags.get("diet:non-vegetarian", "") in ("yes", "only")
 
     cuisine = (tags.get("cuisine") or "restaurant").replace(";", ", ").replace("_", " ")
     stars = tags.get("stars")
@@ -47,7 +49,7 @@ def _normalize(el: dict[str, Any]) -> dict[str, Any] | None:
     except ValueError:
         rating = None
 
-    return {
+    return apply_veg_hint({
         "id": f"osm-{el.get('type', 'n')}-{el.get('id')}",
         "name": name[:120],
         "cuisine": cuisine[:80].title(),
@@ -63,7 +65,7 @@ def _normalize(el: dict[str, Any]) -> dict[str, Any] | None:
         "opening_status": "open" if tags.get("opening_hours") else "unknown",
         "data_source": "openstreetmap_overpass",
         "data_status": "LIVE",
-    }
+    }, diet_tagged=diet_tagged)
 
 
 def _live_disabled() -> bool:

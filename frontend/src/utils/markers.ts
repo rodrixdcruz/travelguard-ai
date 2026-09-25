@@ -104,7 +104,7 @@ export function markersFromDiscovery(
     latitude: f.latitude,
     longitude: f.longitude,
     distance_km: f.distance_km,
-    detail: `${f.cuisine}${f.price_range ? ` · ${f.price_range}` : ''}${f.rating ? ` · ★${f.rating}` : ''}`,
+    detail: `${f.cuisine}${f.price_range ? ` · ${f.price_range}` : ''}${f.veg_hint === true ? ' · veg (inferred)' : ''}${f.rating ? ` · ★${f.rating}` : ''}`,
     data_status: f.data_status,
   }))
 
