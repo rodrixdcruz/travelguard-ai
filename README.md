@@ -61,14 +61,25 @@ deployment) and can be re-run against current conditions in one click.
 transport, all key-less via OpenStreetMap. Categories include attractions with
 lakes, gardens, parks and zoos; bus stands, railway and metro stations, and
 taxi/auto stands — every result labeled LIVE or DEMO by the provider summary
-line.
+line. The pulsing cyan dot marks your position with a hoverable "You are here"
+label naming the spot.
 
 ![Live discovery](docs/screenshots/discovery-live.png)
 
-**Transit POIs on the map** — bus stands and railway stations near Nagpur served
-LIVE through the Overpass → Nominatim fallback chain, plotted on the dark map.
+**Transport discovery** — the dedicated Transport view lists every transit
+stop/station in the selected area (bus, metro, railway, tram, platforms),
+fetched per category so no mode crowds out another, with a radius selector or
+visible-map-area search.
 
 ![Transit POIs](docs/screenshots/transit-pois.png)
+
+**Food filters that stay honest** — when OSM maps no diet tags, the VEG filter
+still works on conservative name-based inference ("Pure Veg", "Jain", "Sattvik"),
+badged as dashed **VEG · INFERRED** with a tooltip — never merged into the
+confirmed data flags. Unprovable filters say so instead of implying the area
+has no such food.
+
+![Veg hints on live food data](docs/screenshots/food-veg-hints.png)
 
 **Fare comparison** — every journey result compares all 8 transport modes
 (bus, local train, metro, Rapido, auto, Ola, Uber, taxi) cheapest-first, with
