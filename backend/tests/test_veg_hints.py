@@ -7,6 +7,7 @@ were mapped.
 import pytest
 
 from app.providers import food as food_provider
+from app.providers import geoapify_places
 from app.providers.veg_hints import apply_veg_hint, infer_veg_hint
 
 
@@ -103,21 +104,23 @@ def test_hint_never_satisfies_strict_vegetarian_filter():
 
 
 def test_food_chain_attaches_hints_via_geoapify(monkeypatch):
+    """The real Geoapify fetcher (not a stub of it) must attach hints.
+
+    Stubbing food_provider.geoapify_fetch_food would bypass the hint
+    application entirely — the hint lives inside geoapify fetch_food, so
+    the network layer (_search) is what gets stubbed here.
+    """
+    monkeypatch.delenv("TRAVELGUARD_DISABLE_LIVE_PROVIDERS", raising=False)
     monkeypatch.setenv("GEOAPIFY_API_KEY", "test-key")
-    monkeypatch.setattr(
-        food_provider,
-        "geoapify_fetch_food",
-        lambda *a, **k: [
-            {"id": "g-1", "name": "Jain Bhojanalaya", "cuisine": "Indian", "vegetarian": False,
-             "non_vegetarian": True, "price_range": None, "rating": None,
-             "latitude": 21.14, "longitude": 79.08, "address": "",
-             "opening_status": "unknown", "data_source": "geoapify_places", "data_status": "LIVE"},
-            {"id": "g-2", "name": "Cafe Leopold", "cuisine": "Cafe", "vegetarian": False,
-             "non_vegetarian": True, "price_range": None, "rating": None,
-             "latitude": 21.15, "longitude": 79.09, "address": "",
-             "opening_status": "unknown", "data_source": "geo_places", "data_status": "LIVE"},
-        ],
-    )
+    features = [
+        {"type": "Feature", "geometry": {"type": "Point", "coordinates": [79.08, 21.14]},
+         "properties": {"name": "Jain Bhojanalaya", "categories": ["catering", "catering.restaurant.indian"],
+                        "place_id": "v-1"}},
+        {"type": "Feature", "geometry": {"type": "Point", "coordinates": [79.09, 21.15]},
+         "properties": {"name": "Cafe Leopold", "categories": ["catering", "catering.cafe"],
+                        "place_id": "v-2"}},
+    ]
+    monkeypatch.setattr(geoapify_places, "_search", lambda *a, **k: features)
     out = food_provider.fetch_nearby(21.1458, 79.0882, radius_km=10, limit=5)
     hints = {f["name"]: f.get("veg_hint") for f in out}
     assert hints["Jain Bhojanalaya"] is True
