@@ -32,8 +32,18 @@ jobs:
           pip install -r requirements.txt
           pip install -r requirements-dev.txt
 
-      - name: Run tests
-        run: python -m pytest -q
+      # Coverage measures the app package only (not tests/ml training
+      # scaffolding); term-missing keeps the artifact readable.
+      - name: Run tests with coverage
+        run: python -m pytest -q --cov=app --cov-report=term-missing --cov-report=json
+
+      - name: Upload coverage artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-json
+          path: backend/coverage.json
+          if-no-files-found: ignore
 
   frontend:
     name: Frontend build (Node 22)
@@ -57,3 +67,53 @@ jobs:
       # type or build failure shows up here first.
       - name: Production build
         run: npm run build
+
+  # Publishes the coverage badge without any external coverage service:
+  # generates a self-contained SVG from the measured % and commits it to
+  # main (badge-bot commits are skipped by CI's branch filter). Runs only
+  # on pushes to main — PRs never write.
+  coverage-badge:
+    name: Coverage badge
+    needs: backend
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download coverage artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage-json
+          path: coverage
+
+      - name: Generate badge SVG
+        run: |
+          PCT=$(python -c "import json;print(round(json.load(open('coverage/coverage.json'))['totals']['percent_covered_display']))")
+          echo "PCT=$PCT" >> "$GITHUB_ENV"
+          python - "$PCT" << 'PYEOF'
+          import sys
+          pct = int(sys.argv[1])
+          color = "#4c1" if pct >= 90 else "#97ca00" if pct >= 75 else "#dfb317" if pct >= 60 else "#fe7d37"
+          label, value = "coverage", f"{pct}%"
+          lw, vw = 6.5 * len(label) + 10, 6.5 * len(value) + 10
+          w = lw + vw
+          svg = f'''<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="20" role="img" aria-label="{label}: {value}"><linearGradient id="s" x2="0" y2="100%"><stop offset="0" stop-color="#bbb" stop-opacity=".1"/><stop offset="1" stop-opacity=".1"/></linearGradient><clipPath id="r"><rect width="{w}" height="20" rx="3" fill="#fff"/></clipPath><g clip-path="url(#r)"><rect width="{lw}" height="20" fill="#555"/><rect x="{lw}" width="{vw}" height="20" fill="{color}"/></g><g fill="#fff" text-anchor="middle" font-family="Verdana,Geneva,DejaVu Sans,sans-serif" font-size="11"><text x="{lw/2:.1f}" y="14">{label}</text><text x="{lw+vw/2:.1f}" y="14">{value}</text></g></svg>'''
+          open(".github/coverage-badge.svg", "w").write(svg)
+          PYEOF
+
+      - name: Commit badge if changed
+        run: |
+          git config user.name "coverage-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add .github/coverage-badge.svg
+          if git diff --cached --quiet; then
+            echo "Badge unchanged"
+          else
+            git commit -m "chore: update coverage badge (${PCT}%)
+
+            🤖 Generated with Codebuff
+            Co-Authored-By: Codebuff <noreply@codebuff.com>"
+            git push
+          fi
