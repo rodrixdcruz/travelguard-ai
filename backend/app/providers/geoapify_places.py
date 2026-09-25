@@ -283,7 +283,6 @@ def fetch_food(latitude: float, longitude: float, radius_m: int = 8000, limit: i
         diet_tagged = veg or str(raw.get("diet:non-vegetarian", "")).lower() in ("yes", "only")
         price = raw.get("charge") or raw.get("price") or None
         row = {
-            {
                 "id": f"geoapify-{str(props.get('place_id', name[:24]))[:32]}",
                 "name": name[:120],
                 "cuisine": cuisine[:80],
