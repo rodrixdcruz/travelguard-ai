@@ -61,6 +61,56 @@
   animation: you-are-here-flash 0.9s ease-out 3;
 }
 
+/* Label beside the dot: pops in, holds, fades out (see you-are-here-label-life).
+   Hovering swaps the text for the location name and holds it visible. */
+@keyframes you-are-here-label-life {
+  0% {
+    opacity: 0;
+    transform: translateY(-50%) translateX(-5px);
+  }
+  6% {
+    opacity: 1;
+    transform: translateY(-50%) translateX(0);
+  }
+  78% {
+    opacity: 1;
+    transform: translateY(-50%) translateX(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-50%) translateX(0);
+  }
+}
+
+.you-are-here-label {
+  position: absolute;
+  left: 42px;
+  top: 50%;
+  max-width: 230px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  color: #a5f3fc;
+  background: rgba(8, 25, 43, 0.92);
+  border: 1px solid rgba(34, 211, 238, 0.35);
+  border-radius: 9999px;
+  padding: 5px 9px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+  animation: you-are-here-label-life 4.2s ease-out forwards;
+}
+
+.you-are-here-label.you-are-here-label--hold {
+  animation: none;
+  opacity: 1;
+  color: #e0f2fe;
+  border-color: rgba(34, 211, 238, 0.55);
+}
+
 
 @layer base {
   html {

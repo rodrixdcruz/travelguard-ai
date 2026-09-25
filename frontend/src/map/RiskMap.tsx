@@ -114,22 +114,46 @@ const destIcon = L.divIcon({
   iconAnchor: [7, 7],
 })
 
-/** Pulsing "you are here" halo + dot for the user's selected location. */
-function userHereIcon(flash: boolean): L.DivIcon {
+/**
+ * Pulsing "you are here" halo + dot for the user's selected location.
+ * Carries a "You are here" label that pops in and fades after ~4 s; hovering
+ * the dot swaps the text for the location name and holds it visible (pure-DOM
+ * inline handlers — Leaflet injects this HTML outside React's tree).
+ */
+function userHereIcon(name: string): L.DivIcon {
+  const safeName = name
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
   return L.divIcon({
     className: '',
     html: `
-      <div style="position:relative;width:34px;height:34px">
+      <div style="position:relative;width:34px;height:34px"
+        onmouseenter="const l=this.querySelector('.you-are-here-label');if(l){l.textContent=l.dataset.name||'';l.classList.add('you-are-here-label--hold')}"
+        onmouseleave="const l=this.querySelector('.you-are-here-label');if(l){l.textContent='You are here';l.classList.remove('you-are-here-label--hold')}">
         <div class="you-are-here-halo-wrap"><div class="you-are-here-halo"></div></div>
-        ${flash ? '<div class="you-are-here-flash-wrap"><div class="you-are-here-flash"></div></div>' : ''}
         <div style="position:absolute;left:50%;top:50%;width:14px;height:14px;margin:-7px 0 0 -7px;
           border-radius:50%;background:#22d3ee;border:2.5px solid #ffffff;
           box-shadow:0 0 10px #22d3eecc"></div>
+        <div class="you-are-here-label" data-name="${safeName}">You are here</div>
       </div>`,
     iconSize: [34, 34],
     iconAnchor: [17, 17],
   })
 }
+
+/** One-shot GPS-arrival flash — a separate overlay marker so mounting and
+ * unmounting it never restarts the dot's label animation. */
+const userFlashIcon = L.divIcon({
+  className: '',
+  html: `
+    <div style="position:relative;width:34px;height:34px">
+      <div class="you-are-here-flash-wrap"><div class="you-are-here-flash"></div></div>
+    </div>`,
+  iconSize: [34, 34],
+  iconAnchor: [17, 17],
+})
 
 function markerIcon(marker: MapMarker, selected: boolean): L.DivIcon {
   const meta = KIND_META[marker.kind] ?? KIND_META.attraction
@@ -224,6 +248,17 @@ export default function RiskMap({
   // new markers landing mid-flight would cancel the animation.
   const [flying, setFlying] = useState(false)
 
+  // Icon identity is keyed by the location so the "You are here" label
+  // animation replays when the user moves, and is otherwise stable — flash
+  // mount/unmount or unrelated re-renders must not restart it.
+  const userLocKey = userLocation
+    ? `${userLocation.latitude},${userLocation.longitude},${userLocation.name}`
+    : ''
+  const userIcon = useMemo(
+    () => (userLocation ? userHereIcon(userLocation.name) : null),
+    [userLocKey],
+  )
+
   return (
     <MapContainer
       center={center}
@@ -265,13 +300,21 @@ export default function RiskMap({
           eventHandlers={{ click: () => onSelectMarker?.(m.id) }}
         />
       ))}
-      {userLocation && (
+      {userLocation && userIcon && (
         <Marker
           position={[userLocation.latitude, userLocation.longitude]}
-          icon={userHereIcon(userFlashing)}
-          interactive={false}
+          icon={userIcon}
           zIndexOffset={1000}
-          key={`you-are-here-${userLocation.latitude}-${userLocation.longitude}-${userFlashing ? 'flash' : 'calm'}`}
+          keyboard={false}
+          key={`you-are-here-${userLocation.latitude}-${userLocation.longitude}`}
+        />
+      )}
+      {userLocation && userFlashing && (
+        <Marker
+          position={[userLocation.latitude, userLocation.longitude]}
+          icon={userFlashIcon}
+          interactive={false}
+          zIndexOffset={1001}
         />
       )}
       {onBounds && <BoundsReporter onBounds={onBounds} />}
