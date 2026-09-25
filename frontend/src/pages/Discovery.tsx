@@ -464,7 +464,15 @@ export function DayPlanner() {
               <div className="space-y-6">
                 <Panel title="Your route on the map">
                   <div className="h-[280px]">
-                    <RiskMap segments={segments} heightClass="h-[280px] w-full" />
+                    <RiskMap
+                      segments={segments}
+                      heightClass="h-[280px] w-full"
+                      userLocation={
+                        needsLocation
+                          ? null
+                          : { latitude: location.latitude, longitude: location.longitude, name: location.name }
+                      }
+                    />
                   </div>
                   <p className="text-[11px] text-slate-500 mt-2 flex items-center gap-1.5">
                     <DataBadge status="ESTIMATED" /> straight-line travel legs (no live routing yet)
@@ -661,7 +669,16 @@ export function FoodNearYou() {
 
           <div className="lg:col-span-1">
             <div className="sticky top-20 h-[420px]">
-              <RiskMap markers={markers} fitToMarkers heightClass="h-[420px] w-full" />
+              <RiskMap
+                markers={markers}
+                fitToMarkers
+                heightClass="h-[420px] w-full"
+                userLocation={
+                  needsLocation
+                    ? null
+                    : { latitude: location.latitude, longitude: location.longitude, name: location.name }
+                }
+              />
             </div>
             <p className="text-[11px] text-slate-500 mt-2">Food shown as 🍽 markers on the map.</p>
           </div>

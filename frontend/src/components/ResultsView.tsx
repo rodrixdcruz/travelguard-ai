@@ -10,6 +10,7 @@ import SegmentDetail from './SegmentDetail'
 import Panel from './Panel'
 import RiskMap from '../map/RiskMap'
 import { useJourney } from '../context/JourneyContext'
+import { useTouristLocation } from '../context/LocationContext'
 import SafetyCard from './SafetyCard'
 import IntelligencePanel from './IntelligencePanel'
 
@@ -21,6 +22,7 @@ export default function ResultsView({ mapHeight = 'h-[420px]' }: Props) {
   const [selectedId, setSelectedId] = useState<number | null>(null)
 
   const { analysis, briefing, briefingSource } = useJourney()
+  const { location, needsLocation } = useTouristLocation()
   if (!analysis) return null
 
   const selected: Segment | null =
@@ -113,6 +115,11 @@ export default function ResultsView({ mapHeight = 'h-[420px]' }: Props) {
               destination={analysis.journey.destination}
               selectedId={selectedId}
               onSelect={setSelectedId}
+              userLocation={
+                needsLocation
+                  ? null
+                  : { latitude: location.latitude, longitude: location.longitude, name: location.name }
+              }
             />
           </div>
           <p className="mt-2 text-xs text-slate-500 text-center">
