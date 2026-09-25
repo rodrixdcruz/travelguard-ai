@@ -54,6 +54,36 @@ SERVICE_CATEGORY_GROUPS: tuple[str, ...] = (
 )
 SERVICE_GROUP_FETCH_LIMIT = 20  # per group; circle-bounded, nearest-first
 
+# ── Transport discovery ───────────────────────────────────────────────────
+# Every transit category is queried INDEPENDENTLY with its own pagination so a
+# dense cluster of one mode (hundreds of bus stops) can never crowd another
+# mode (metro/railway) out of the window, and so the result is everything the
+# provider knows for the selected area — not a nearest-first sample.
+# All categories verified against the live API (an unknown key fails the whole
+# request). Order is irrelevant to correctness: cross-group duplicates are
+# removed by provider place_id (a bus terminal legitimately appears under
+# both public_transport.bus and public_transport.platform).
+TRANSPORT_CATEGORY_GROUPS: tuple[str, ...] = (
+    "public_transport.bus",            # bus stops & bus stations
+    "public_transport.platform",       # public transport platforms
+    "public_transport.subway.entrance",  # metro entrances
+    "public_transport.subway",         # metro stations
+    "public_transport.train",          # railway stations
+    "public_transport.light_rail",
+    "public_transport.tram",
+    "public_transport.monorail",
+)
+TRANSPORT_PAGE_SIZE = 200            # features per request (provider max 500)
+TRANSPORT_MAX_PER_GROUP = 500        # hard cap per category group
+
+# Stable subtype vocabulary derived from the provider's own category + raw
+# OSM tags (never invented). 'transit' = tagged public_transport but with no
+# resolvable mode.
+TRANSPORT_SUBTYPES = (
+    "bus_stop", "bus_terminal", "metro_station", "metro_entrance",
+    "railway_station", "tram", "monorail", "light_rail", "transit",
+)
+
 
 class GeoapifyUnavailable(Exception):
     """Raised when the Geoapify provider cannot serve a request."""
@@ -116,8 +146,15 @@ def _search(
     longitude: float,
     radius_m: int,
     limit: int,
+    offset: int = 0,
+    bbox: Optional[str] = None,
 ) -> list[dict[str, Any]]:
-    """One Places API call. Raises GeoapifyUnavailable on any failure."""
+    """One Places API call. Raises GeoapifyUnavailable on any failure.
+
+    ``bbox`` is "lat1,lon1,lat2,lon2" (any corner order) — when given the
+    query filters a rectangle (visible-map search) instead of a circle;
+    proximity bias stays on the supplied center point.
+    """
     if _live_disabled():
         raise GeoapifyUnavailable("live providers disabled via TRAVELGUARD_DISABLE_LIVE_PROVIDERS")
     key = _api_key()
@@ -126,16 +163,28 @@ def _search(
 
     def _fetch() -> list[dict[str, Any]]:
         try:
+            if bbox is not None:
+                parts = [float(p) for p in bbox.split(",")]  # "lat1,lon1,lat2,lon2"
+                lat1, lon1, lat2, lon2 = parts[0], parts[1], parts[2], parts[3]
+                area_filter = (
+                    f"rect:{min(lon1, lon2):.6f},{min(lat1, lat2):.6f},"
+                    f"{max(lon1, lon2):.6f},{max(lat1, lat2):.6f}"
+                )
+            else:
+                # GeoJSON order: longitude first.
+                area_filter = f"circle:{longitude:.6f},{latitude:.6f},{int(radius_m)}"
+            params: dict[str, Any] = {
+                "categories": categories,
+                "filter": area_filter,
+                "bias": f"proximity:{longitude:.6f},{latitude:.6f}",
+                "limit": max(1, min(int(limit), 500)),
+                "apiKey": key,
+            }
+            if offset:
+                params["offset"] = int(offset)
             resp = httpx.get(
                 PLACES_URL,
-                params={
-                    "categories": categories,
-                    # GeoJSON order: longitude first.
-                    "filter": f"circle:{longitude:.6f},{latitude:.6f},{int(radius_m)}",
-                    "bias": f"proximity:{longitude:.6f},{latitude:.6f}",
-                    "limit": max(1, min(int(limit), 50)),
-                    "apiKey": key,
-                },
+                params=params,
                 headers={"User-Agent": USER_AGENT},
                 timeout=TIMEOUT,
             )
@@ -147,10 +196,11 @@ def _search(
             raise GeoapifyUnavailable(f"geoapify places: {payload['error']}")
         return list(payload.get("features") or [])
 
-    # Results are cached per (categories, ~100 m cell, radius, limit) so repeat
-    # discoveries and day-plan meal lookups don't burn free credits.
+    # Results are cached per (categories, ~100 m cell, radius, limit, offset)
+    # so repeat discoveries and day-plan meal lookups don't burn free credits.
     return cached(
-        ("geoapify", categories, round(latitude, 3), round(longitude, 3), int(radius_m), int(limit)),
+        ("geoapify", categories, round(latitude, 3), round(longitude, 3),
+         int(radius_m) if bbox is None else str(bbox), int(limit), int(offset)),
         RESULT_TTL_SECONDS,
         _fetch,
     )
@@ -327,3 +377,145 @@ def fetch_services(latitude: float, longitude: float, radius_m: int = 8000, limi
     # (which re-add their own distance fields) see the plain service shape.
     out.sort(key=lambda s: s.pop("_distance_km"))
     return out
+
+
+# ── Transport discovery ───────────────────────────────────────────────────
+
+
+def _transport_subtype(cats: list[str], raw: dict[str, Any]) -> str:
+    """Subtype from the provider's own category metadata + raw OSM tags.
+
+    Uses only data Geoapify actually returns (its ``categories`` list and the
+    ``raw`` OSM tag block) — station types are never invented. Specificity
+    beats order: all category strings are classified, then the most specific
+    subtype wins.
+    """
+    subtypes: set[str] = set()
+    for c in cats:
+        if c.startswith("public_transport.subway.entrance"):
+            subtypes.add("metro_entrance")
+        elif c.startswith("public_transport.subway"):
+            subtypes.add("metro_station")
+        elif c.startswith("public_transport.train"):
+            subtypes.add("railway_station")
+        elif c.startswith("public_transport.bus"):
+            subtypes.add("bus_stop")
+        elif c.startswith("public_transport.tram"):
+            subtypes.add("tram")
+        elif c.startswith("public_transport.monorail"):
+            subtypes.add("monorail")
+        elif c.startswith("public_transport.light_rail"):
+            subtypes.add("light_rail")
+        elif c.startswith("public_transport.platform"):
+            subtypes.add("transit")  # bare platform — mode resolved from raw tags below
+        elif c.startswith("public_transport"):
+            subtypes.add("transit")
+    # Raw OSM tags refine the mode where Geoapify's categories are coarse —
+    # e.g. a bus TERMINAL is an OSM way/area whose raw tags say so, and a
+    # bare platform with highway=bus_stop is a bus stop, not unknown transit.
+    pub = str(raw.get("public_transport", ""))
+    if "bus_stop" in subtypes or (pub == "platform" and str(raw.get("highway", "")) == "bus_stop"):
+        subtypes.discard("transit")
+        subtypes.add("bus_stop")
+    if str(raw.get("amenity", "")) == "bus_station" or (
+        pub == "station" and "bus" in str(raw.get("bus", ""))
+    ):
+        subtypes.discard("bus_stop")
+        subtypes.discard("transit")
+        subtypes.add("bus_terminal")
+    if pub == "station" and str(raw.get("station", "")) == "subway":
+        subtypes.add("metro_station")
+    for k in (
+        "bus_terminal", "metro_station", "metro_entrance", "railway_station",
+        "bus_stop", "tram", "monorail", "light_rail", "transit",
+    ):
+        if k in subtypes:
+            return k
+    return "transit"
+
+
+def _feature_transport_row(
+    feature: dict[str, Any],
+    latitude: float,
+    longitude: float,
+) -> Optional[dict[str, Any]]:
+    """Normalize one Geoapify feature into a transport-stop row (or None)."""
+    props = feature.get("properties") or {}
+    raw = props.get("raw") or {}
+    name = str(props.get("name") or "").strip()
+    coords = _feature_coords(feature)
+    if not name or coords is None:
+        return None
+    cats = [str(c) for c in (props.get("categories") or [])]
+    lat, lon = coords
+    return {
+        "id": f"geoapify-{str(props.get('place_id', name[:24]))[:64]}",
+        "name": name[:120],
+        "transport_type": _transport_subtype(cats, raw),
+        "latitude": lat,
+        "longitude": lon,
+        "address": str(props.get("address_line2") or props.get("formatted") or "")[:160],
+        "distance_km": round(_approx_distance_km(latitude, longitude, lat, lon), 3),
+        "data_source": "geoapify_places",
+        "data_status": "LIVE",
+    }
+
+
+def fetch_transport(
+    latitude: float,
+    longitude: float,
+    radius_m: int = 5000,
+    bbox: Optional[str] = None,
+    limit: int = 400,
+) -> dict[str, Any]:
+    """ALL transit stops/stations in the selected area (LIVE, paginated).
+
+    One paginated Places query per transport category group (see
+    TRANSPORT_CATEGORY_GROUPS) so a dense cluster of one mode cannot crowd
+    another mode out; results are deduped by provider place_id (a bus
+    terminal legitimately appears under both ``.bus`` and ``.platform`` —
+    those merge; distinct stops are never merged by proximity). A category
+    group that fails is skipped and reported in ``failed_groups`` while the
+    successful groups still serve — partial results with honest status.
+    Cached per (group, area, offset) for ~30 min.
+    """
+    limit = max(1, min(int(limit), 5000))
+    out: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    failed_groups: list[str] = []
+    for categories in TRANSPORT_CATEGORY_GROUPS:
+        collected = 0
+        offset = 0
+        while collected < TRANSPORT_MAX_PER_GROUP:
+            page_size = min(TRANSPORT_PAGE_SIZE, TRANSPORT_MAX_PER_GROUP - collected)
+            try:
+                features = _search(
+                    categories, latitude, longitude, int(radius_m),
+                    page_size, offset=offset, bbox=bbox,
+                )
+            except GeoapifyUnavailable as exc:
+                logger.warning("Geoapify transport group failed (%s): %s", categories, exc)
+                failed_groups.append(categories)
+                break
+            out.extend(f for f in features if (_transport_key(f) not in seen))
+            for f in features:
+                seen.add(_transport_key(f))
+            collected += len(features)
+            if len(features) < page_size:  # short page → group exhausted
+                break
+            offset += page_size
+    rows: list[dict[str, Any]] = []
+    row_ids: set[str] = set()
+    for f in out:
+        row = _feature_transport_row(f, latitude, longitude)
+        if row is not None and row["id"] not in row_ids:
+            row_ids.add(row["id"])
+            rows.append(row)
+    rows.sort(key=lambda r: r["distance_km"])
+    rows = rows[:limit]
+    return {"stops": rows, "failed_groups": failed_groups, "area_filter": "bbox" if bbox else "circle"}
+
+
+def _transport_key(feature: dict[str, Any]) -> str:
+    props = feature.get("properties") or {}
+    return str(props.get("place_id") or f"{feature.get('geometry', {}).get('coordinates')}" )

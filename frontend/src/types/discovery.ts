@@ -52,6 +52,33 @@ export interface LocalService {
   data_status: DataStatus
 }
 
+/** Row of GET /api/transport/nearby — one real transit stop/station. */
+export interface TransportStop {
+  id: string
+  name: string
+  transport_type: 'bus_stop' | 'bus_terminal' | 'metro_station' | 'metro_entrance' | 'railway_station' | 'tram' | 'monorail' | 'light_rail' | 'transit'
+  latitude: number
+  longitude: number
+  address: string
+  distance_km: number
+  data_source: string
+  data_status: DataStatus
+}
+
+/** Response shape of GET /api/transport/nearby. */
+export interface TransportResponse {
+  origin: { latitude: number; longitude: number }
+  radius_km: number
+  count: number
+  transport: TransportStop[]
+  data_status: DataStatus
+  data_source: string
+  provider_summary: import('../components/ProviderSummaryLine').ProviderSummary
+  failed_groups: string[]
+  area_filter: 'circle' | 'bbox'
+  note: string
+}
+
 export interface PlanItem {
   type: 'travel' | 'attraction' | 'meal'
   time: string

@@ -26,6 +26,23 @@ function FitMarkers({ points }: { points: [number, number][] }) {
   return null
 }
 
+/** Reports the visible map bounds upward so panels can search within them. */
+function BoundsReporter({ onBounds }: { onBounds: (b: { lat1: number; lon1: number; lat2: number; lon2: number } | null) => void }) {
+  const map = useMap()
+  useEffect(() => {
+    const emit = () => {
+      const b = map.getBounds()
+      if (b) onBounds({ lat1: b.getNorth(), lon1: b.getWest(), lat2: b.getSouth(), lon2: b.getEast() })
+    }
+    emit()
+    map.on('moveend zoomend', emit)
+    return () => {
+      map.off('moveend zoomend', emit)
+    }
+  }, [map, onBounds])
+  return null
+}
+
 const icon = L.divIcon({
   className: '',
   html: `<div style="width:14px;height:14px;border-radius:50%;background:#22d3ee;box-shadow:0 0 12px #22d3ee88;border:2px solid #ffffffcc"></div>`,
@@ -68,6 +85,7 @@ interface Props {
   onSelectMarker?: (id: string) => void
   fitToMarkers?: boolean
   heightClass?: string
+  onBounds?: (b: { lat1: number; lon1: number; lat2: number; lon2: number } | null) => void
 }
 
 export default function RiskMap({
@@ -81,6 +99,7 @@ export default function RiskMap({
   onSelectMarker,
   fitToMarkers = false,
   heightClass = 'h-full w-full',
+  onBounds,
 }: Props) {
   const routePoints = useMemo(() => segments.flatMap((s) => s.path), [segments])
   const center: [number, number] = useMemo(() => {
@@ -146,6 +165,7 @@ export default function RiskMap({
           eventHandlers={{ click: () => onSelectMarker?.(m.id) }}
         />
       ))}
+      {onBounds && <BoundsReporter onBounds={onBounds} />}
     </MapContainer>
   )
 }

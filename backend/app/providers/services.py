@@ -10,10 +10,15 @@ from __future__ import annotations
 import logging
 from typing import Any, Optional
 
-from .places import _with_distance
+from .places import _with_distance, haversine_km
 from .demo_mumbai import DEMO_SERVICES
 from .services_osm import fetch_nearby as osm_fetch_nearby
-from .geoapify_places import GeoapifyUnavailable, fetch_services as geoapify_fetch_services
+from .geoapify_places import (
+    GeoapifyUnavailable,
+    TRANSPORT_CATEGORY_GROUPS as TRANSPORT_GROUPS_ALL,
+    fetch_services as geoapify_fetch_services,
+    fetch_transport as geoapify_fetch_transport,
+)
 from .places_osm import OsmUnavailable
 
 logger = logging.getLogger("travelguard.services")
@@ -67,3 +72,79 @@ def fetch_nearby(
 def nearest_by_type(latitude: float, longitude: float, service_type: str) -> Optional[dict[str, Any]]:
     items = fetch_nearby(latitude, longitude, radius_km=40.0, service_type=service_type, limit=1)
     return items[0] if items else None
+
+
+# ── Full transport discovery ─────────────────────────────────────────────
+
+
+# OSM fallback rows → the transport subtype vocabulary (taxis are NOT transit;
+# they stay on the services path). bus_stand collapses to bus_stop — the
+# key-less OSM tier cannot distinguish a terminal from a stop.
+_OSM_TRANSPORT_TYPES = {
+    "bus_stand": "bus_stop",
+    "railway_station": "railway_station",
+    "metro_station": "metro_station",
+    "transport": "transit",
+}
+
+
+def fetch_transport_nearby(
+    latitude: float,
+    longitude: float,
+    radius_km: float = 5.0,
+    bbox: Optional[str] = None,
+    limit: int = 400,
+) -> dict[str, Any]:
+    """ALL transit stops/stations in the area — keyed tier first, then OSM.
+
+    ``bbox`` ("lat1,lon1,lat2,lon2") searches the visible map rectangle
+    instead of a circle (full-city / visible-area discovery); the point stays
+    as the proximity bias and distance origin.
+
+    Geoapify: one paginated query per transport category (bus/platform/
+    subway/entrance/train/tram/…), merged and deduped by provider id, so no
+    mode crowds out another and the result is everything the provider knows
+    for the area — not a nearest-first sample. Honest empty stays empty.
+    Only when EVERY Geoapify group fails does the key-less Overpass tier
+    serve (its fewer subtypes are mapped honestly, e.g. bus_terminal is not
+    distinguishable there → bus_stop). Distinct stops are never merged.
+    """
+    radius_km = max(0.2, min(float(radius_km), 50.0))
+    limit = max(1, min(int(limit), 2000))
+    try:
+        data = geoapify_fetch_transport(
+            latitude, longitude, radius_m=int(radius_km * 1000),
+            bbox=bbox, limit=limit,
+        )
+        if data["stops"] or len(data["failed_groups"]) < len(TRANSPORT_GROUPS_ALL):
+            # Served (or honestly empty) — report as-is. failed_groups tells
+            # the caller which category queries did not contribute.
+            return data
+        logger.warning("Geoapify transport empty with ALL groups failed — trying Overpass")
+    except GeoapifyUnavailable as exc:
+        logger.info("Geoapify transport unavailable (%s) — trying Overpass", exc)
+
+    try:
+        osm_rows = osm_fetch_nearby(latitude, longitude, radius_m=int(radius_km * 1000), limit=limit)
+    except OsmUnavailable as exc:
+        # Both live tiers down/empty → honest empty; the UI explains that no
+        # matching stations were found rather than inventing any.
+        logger.warning("OSM transport fallback unavailable (%s) — serving honest empty", exc)
+        return {
+            "stops": [],
+            "failed_groups": list(TRANSPORT_GROUPS_ALL),
+            "area_filter": "circle",
+        }
+    transit = [
+        {**row,
+         "transport_type": _OSM_TRANSPORT_TYPES.get(row["service_type"], "transit"),
+         "distance_km": round(haversine_km(latitude, longitude, row["latitude"], row["longitude"]), 3)}
+        for row in osm_rows
+        if row["service_type"] in _OSM_TRANSPORT_TYPES
+    ]
+    transit.sort(key=lambda r: r["distance_km"])
+    return {
+        "stops": transit[:limit],
+        "failed_groups": list(TRANSPORT_GROUPS_ALL),
+        "area_filter": "circle",
+    }

@@ -1,4 +1,4 @@
-import type { DayPlan, FoodPlace, GeoSearchResponse, LocalSafety, LocalService, Place, TouristLocation } from '../types/discovery'
+import type { DayPlan, FoodPlace, GeoSearchResponse, LocalSafety, LocalService, Place, TransportResponse, TouristLocation } from '../types/discovery'
 import type { ProviderSummary } from '../components/ProviderSummaryLine'
 import { apiConfig } from './api'
 
@@ -128,6 +128,31 @@ export async function fetchNearbyServices(opts: {
   const data = await get<{ services: LocalService[]; count: number; data_status: string; provider_summary: ProviderSummary }>(
     `/api/services/nearby?${q}`,
   )
+  recordOutcome('services', opts.latitude, opts.longitude, data.count, data.data_status)
+  return data
+}
+
+export async function fetchNearbyTransport(opts: {
+  latitude: number
+  longitude: number
+  radius_km?: number
+  bbox?: string
+  limit?: number
+  signal?: AbortSignal
+}): Promise<TransportResponse> {
+  const q = new URLSearchParams({
+    latitude: String(opts.latitude),
+    longitude: String(opts.longitude),
+    radius_km: String(opts.radius_km ?? 5),
+    limit: String(opts.limit ?? 400),
+  })
+  if (opts.bbox) q.set('bbox', opts.bbox)
+  const res = await fetch(`${apiConfig.API_BASE}/api/transport/nearby?${q}`, { signal: opts.signal })
+  if (!res.ok) {
+    const detail = await res.text().catch(() => res.statusText)
+    throw new Error(`API error ${res.status}: ${detail.slice(0, 160)}`)
+  }
+  const data = (await res.json()) as TransportResponse
   recordOutcome('services', opts.latitude, opts.longitude, data.count, data.data_status)
   return data
 }
