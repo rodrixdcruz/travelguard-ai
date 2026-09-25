@@ -93,14 +93,27 @@ def fetch_nearby(
         except WikiUnavailable as exc:
             logger.warning("Wikipedia places unavailable (%s) — trying OSM", exc)
         if fused:
-            seen_coords: list[tuple[float, float]] = []
+            # Two dedupe rules: (1) identical coordinates within 50 m — the
+            # classic double-mapped POI; (2) same normalized name within
+            # 500 m — the same landmark mapped twice as separate OSM objects
+            # (e.g. Sitabuldi Fort appears as both a point and an area).
+            # Distinct names stay even when close: hospital chains legitimately
+            # have multiple branches on one street.
+            def _norm_name(name: str) -> str:
+                return "".join(ch for ch in name.lower() if ch.isalnum())
+
+            seen: list[tuple[float, float, str]] = []
             deduped: list[dict[str, Any]] = []
             for p in fused:
-                if all(
-                    haversine_km(p["latitude"], p["longitude"], a, b) > 0.05
-                    for a, b in seen_coords
-                ):
-                    seen_coords.append((p["latitude"], p["longitude"]))
+                lat, lon = p["latitude"], p["longitude"]
+                norm = _norm_name(str(p.get("name", "")))
+                is_dup = any(
+                    haversine_km(lat, lon, a, b) <= 0.05
+                    or (norm and norm == seen_norm and haversine_km(lat, lon, a, b) <= 0.5)
+                    for a, b, seen_norm in seen
+                )
+                if not is_dup:
+                    seen.append((lat, lon, norm))
                     deduped.append(p)
             results = [_with_distance(p, latitude, longitude) for p in deduped]
             results.sort(key=lambda p: p["distance_km"])

@@ -101,18 +101,37 @@ def test_fetch_food_honest_empty(monkeypatch):
 
 
 def test_fetch_services_kind_mapping(monkeypatch):
+    """Services are fetched per kind group; every kind must survive the merge."""
     monkeypatch.setenv("GEOAPIFY_API_KEY", "test-key")
-    features = [
-        _feature("Indira Gandhi Govt Dental College", 21.14, 79.08, ["healthcare", "healthcare.hospital"]),
-        _feature("Medical Square Pharmacy", 21.15, 79.08, ["healthcare.pharmacy"]),
-        _feature("SBI ATM Sitabuldi", 21.16, 79.08, ["service", "service.financial", "service.financial.atm"]),
-        _feature("Sitabuldi Metro Station", 21.15, 79.09, ["public_transport", "public_transport.subway"]),
-        _feature("Nagpur Railway Station", 21.15, 79.10, ["public_transport", "public_transport.train"]),
-        _feature("Gandhibus Stop", 21.15, 79.11, ["public_transport", "public_transport.bus"]),
-    ]
-    monkeypatch.setattr(
-        geoapify_places, "_search", lambda *a, **k: features
-    )
+    by_group = {
+        "healthcare.hospital": [
+            _feature("Indira Gandhi Govt Dental College", 21.14, 79.08,
+                     ["healthcare", "healthcare.hospital"], place_id="h-1"),
+        ],
+        "healthcare.pharmacy": [
+            _feature("Medical Square Pharmacy", 21.15, 79.08, ["healthcare.pharmacy"], place_id="p-1"),
+        ],
+        "service.financial": [
+            _feature("SBI ATM Sitabuldi", 21.16, 79.08,
+                     ["service", "service.financial", "service.financial.atm"], place_id="f-1"),
+        ],
+        "commercial.supermarket": [
+            _feature("Dmart Sitabuldi", 21.17, 79.09, ["commercial", "commercial.supermarket"], place_id="s-1"),
+        ],
+        "public_transport": [
+            _feature("Sitabuldi Metro Station", 21.15, 79.09,
+                     ["public_transport", "public_transport.subway"], place_id="t-1"),
+            _feature("Nagpur Railway Station", 21.15, 79.10,
+                     ["public_transport", "public_transport.train"], place_id="t-2"),
+            _feature("Gandhi Bus Stop", 21.15, 79.11,
+                     ["public_transport", "public_transport.bus"], place_id="t-3"),
+        ],
+    }
+
+    def _fake_search(categories, *args):
+        return by_group.get(categories, [])
+
+    monkeypatch.setattr(geoapify_places, "_search", _fake_search)
     out = geoapify_places.fetch_services(21.1458, 79.0882, radius_m=8000, limit=25)
     kinds = {o["name"]: o["service_type"] for o in out}
     assert kinds["Indira Gandhi Govt Dental College"] == "hospital"
@@ -120,8 +139,38 @@ def test_fetch_services_kind_mapping(monkeypatch):
     assert kinds["SBI ATM Sitabuldi"] == "atm"
     assert kinds["Sitabuldi Metro Station"] == "metro_station"
     assert kinds["Nagpur Railway Station"] == "railway_station"
-    assert kinds["Gandhibus Stop"] == "bus_stand"
+    assert kinds["Gandhi Bus Stop"] == "bus_stand"
     assert all(o["phone"] is None for o in out)  # never fabricated
+    assert len(out) == 7  # every group contributed, none lost in the merge
+
+
+def test_fetch_services_dense_kind_does_not_crowd_out_others(monkeypatch):
+    """Regression: a hospital district must not fill the whole result window.
+
+    Live in Nagpur: one combined query returned 19/19 hospitals, hiding
+    pharmacies/ATMs/transit entirely. The per-group fan-out guarantees every
+    kind gets its own window regardless of how dense one kind is.
+    """
+    monkeypatch.setenv("GEOAPIFY_API_KEY", "test-key")
+    hospitals = [
+        _feature(f"Hospital #{i}", 21.1458 + i * 0.001, 79.0882,
+                 ["healthcare", "healthcare.hospital"], place_id=f"h-{i}")
+        for i in range(20)
+    ]
+
+    def _fake_search(categories, _lat, _lon, _radius, lim):
+        if categories == "healthcare.hospital":
+            return hospitals[:lim]
+        if categories == "healthcare.pharmacy":
+            return [_feature("Lone Pharmacy", 21.1500, 79.0890, ["healthcare.pharmacy"], place_id="p-1")]
+        return []
+
+    monkeypatch.setattr(geoapify_places, "_search", _fake_search)
+    out = geoapify_places.fetch_services(21.1458, 79.0882, radius_m=8000, limit=5)
+    types = {o["service_type"] for o in out}
+    names = [o["name"] for o in out]
+    assert types == {"hospital", "pharmacy"}
+    assert "Lone Pharmacy" in names
 
 
 def test_fetch_places_leisure_categories(monkeypatch):
@@ -250,6 +299,31 @@ def test_places_chain_dedupes_nearby_duplicates(monkeypatch):
     out = places_provider.fetch_nearby(21.1458, 79.0882, radius_km=15, limit=10)
     names = [p["name"] for p in out]
     assert names.count("Ambazari Lake") == 1
+
+
+def test_places_chain_dedupes_same_name_landmark_mapped_twice(monkeypatch):
+    """Regression: Sitabuldi Fort exists as point + area on OSM (~80 m apart),
+    so the 50 m coordinate rule alone left both copies in discovery."""
+    monkeypatch.setenv("GEOAPIFY_API_KEY", "test-key")
+    monkeypatch.setattr(
+        places_provider,
+        "geoapify_fetch_places",
+        lambda *a, **k: [{"id": "g-3", "name": "Sitabuldi Fort", "category": "historical",
+                          "description": "", "latitude": 21.1562, "longitude": 79.0882,
+                          "address": "", "opening_hours": "Unknown", "rating": None,
+                          "tags": [], "data_source": "geoapify_places", "data_status": "LIVE"}],
+    )
+    monkeypatch.setattr(
+        places_provider,
+        "wiki_fetch_notable",
+        lambda *a, **k: [{"id": "w-1", "name": "Sitabuldi Fort", "category": "historical",
+                          "description": "", "latitude": 21.1570, "longitude": 79.0889,
+                          "address": "", "opening_hours": "Unknown", "rating": None,
+                          "tags": [], "data_source": "wikipedia_geosearch", "data_status": "LIVE"}],
+    )
+    out = places_provider.fetch_nearby(21.1458, 79.0882, radius_km=15, limit=10)
+    names = [p["name"] for p in out]
+    assert names.count("Sitabuldi Fort") == 1
 
 
 # ── Wiki station exclusion ───────────────────────────────────────────────

@@ -36,11 +36,23 @@ RESULT_TTL_SECONDS = 30 * 60  # POI turnover is slow; repeat discoveries are fre
 # children documented by Geoapify are requested — an unknown key could make
 # the whole request fail.
 CAT_FOOD = "catering"
-CAT_SERVICES = (
-    "healthcare.hospital,healthcare.pharmacy,service.financial,"
-    "commercial.supermarket,public_transport"
-)
 CAT_SIGHTS = "tourism.sights,tourism.attraction,leisure,entertainment,natural"
+
+# Services are fetched as one Places call PER KIND GROUP, then merged.
+# A single combined query (all five groups, one limit) is nearest-first, so
+# wherever one kind is dense — a hospital district, a market street — it
+# fills the whole window and pharmacies/ATMs/transit vanish from discovery
+# even though they exist nearby (observed live in Nagpur). Disjoint category
+# sets per group mean no cross-group duplicates; _service_kind still refines
+# transit sub-kinds (metro/railway/bus) per feature.
+SERVICE_CATEGORY_GROUPS: tuple[str, ...] = (
+    "healthcare.hospital",
+    "healthcare.pharmacy",
+    "service.financial",
+    "commercial.supermarket",
+    "public_transport",
+)
+SERVICE_GROUP_FETCH_LIMIT = 20  # per group; circle-bounded, nearest-first
 
 
 class GeoapifyUnavailable(Exception):
@@ -257,33 +269,61 @@ def _service_kind(cats: list[str]) -> Optional[str]:
     return None
 
 
+def _approx_distance_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Haversine distance in km — enough to order merged multi-group results."""
+    import math
+
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    dp = math.radians(lat2 - lat1)
+    dl = math.radians(lon2 - lon1)
+    a = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
+    return 2 * 6371.0 * math.asin(math.sqrt(a))
+
+
 def fetch_services(latitude: float, longitude: float, radius_m: int = 8000, limit: int = 25) -> list[dict[str, Any]]:
-    """Hospitals, pharmacies, ATMs, supermarkets and transit stops (LIVE)."""
-    features = _search(CAT_SERVICES, latitude, longitude, radius_m, limit)
+    """Hospitals, pharmacies, ATMs, supermarkets and transit stops (LIVE).
+
+    One Places query per service kind group (see SERVICE_CATEGORY_GROUPS) so
+    a dense cluster of one kind cannot crowd the others out of the result
+    window; groups are merged nearest-first and deduped. Costs one credit
+    per group call — cached ~30 min via the shared discovery cache.
+    """
+    limit = max(1, min(int(limit), 50))
+    per_group = min(limit, SERVICE_GROUP_FETCH_LIMIT)
     out: list[dict[str, Any]] = []
-    for f in features:
-        props = f.get("properties") or {}
-        name = str(props.get("name") or "").strip()
-        coords = _feature_coords(f)
-        if not name or coords is None:
-            continue
-        cats = [str(c) for c in (props.get("categories") or [])]
-        service_type = _service_kind(cats)
-        if service_type is None:
-            continue
-        lat, lon = coords
-        out.append(
-            {
-                "id": f"geoapify-{str(props.get('place_id', name[:24]))[:32]}",
-                "name": name[:120],
-                "service_type": service_type,
-                "latitude": lat,
-                "longitude": lon,
-                "address": str(props.get("address_line2") or props.get("formatted") or "")[:160],
-                "phone": None,  # Places rows carry no phone — never fabricated
-                "opening_status": "unknown",
-                "data_source": "geoapify_places",
-                "data_status": "LIVE",
-            }
-        )
+    seen: set[str] = set()
+    for categories in SERVICE_CATEGORY_GROUPS:
+        for f in _search(categories, latitude, longitude, radius_m, per_group):
+            props = f.get("properties") or {}
+            name = str(props.get("name") or "").strip()
+            coords = _feature_coords(f)
+            if not name or coords is None:
+                continue
+            cats = [str(c) for c in (props.get("categories") or [])]
+            service_type = _service_kind(cats)
+            if service_type is None:
+                continue
+            place_id = f"geoapify-{str(props.get('place_id', name[:24]))[:32]}"
+            if place_id in seen:
+                continue
+            seen.add(place_id)
+            lat, lon = coords
+            out.append(
+                {
+                    "id": place_id,
+                    "name": name[:120],
+                    "service_type": service_type,
+                    "latitude": lat,
+                    "longitude": lon,
+                    "address": str(props.get("address_line2") or props.get("formatted") or "")[:160],
+                    "phone": None,  # Places rows carry no phone — never fabricated
+                    "opening_status": "unknown",
+                    "data_source": "geoapify_places",
+                    "data_status": "LIVE",
+                    "_distance_km": _approx_distance_km(latitude, longitude, lat, lon),
+                }
+            )
+    # Merged nearest-first; the internal sort key is stripped so callers
+    # (which re-add their own distance fields) see the plain service shape.
+    out.sort(key=lambda s: s.pop("_distance_km"))
     return out
