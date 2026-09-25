@@ -57,6 +57,20 @@ const destIcon = L.divIcon({
   iconAnchor: [7, 7],
 })
 
+/** Pulsing "you are here" halo + dot for the user's selected location. */
+const userHereIcon = L.divIcon({
+  className: '',
+  html: `
+    <div style="position:relative;width:34px;height:34px">
+      <div class="you-are-here-halo-wrap"><div class="you-are-here-halo"></div></div>
+      <div style="position:absolute;left:50%;top:50%;width:14px;height:14px;margin:-7px 0 0 -7px;
+        border-radius:50%;background:#22d3ee;border:2.5px solid #ffffff;
+        box-shadow:0 0 10px #22d3eecc"></div>
+    </div>`,
+  iconSize: [34, 34],
+  iconAnchor: [17, 17],
+})
+
 function markerIcon(marker: MapMarker, selected: boolean): L.DivIcon {
   const meta = KIND_META[marker.kind] ?? KIND_META.attraction
   const size = selected ? 30 : 24
@@ -86,6 +100,8 @@ interface Props {
   fitToMarkers?: boolean
   heightClass?: string
   onBounds?: (b: { lat1: number; lon1: number; lat2: number; lon2: number } | null) => void
+  /** Selected location — rendered as a distinct pulsing "you are here" dot. */
+  userLocation?: { latitude: number; longitude: number; name: string } | null
 }
 
 export default function RiskMap({
@@ -100,13 +116,19 @@ export default function RiskMap({
   fitToMarkers = false,
   heightClass = 'h-full w-full',
   onBounds,
+  userLocation = null,
 }: Props) {
   const routePoints = useMemo(() => segments.flatMap((s) => s.path), [segments])
   const center: [number, number] = useMemo(() => {
     const src =
       routePoints.length > 0
         ? routePoints
-        : markers.map((m) => ({ lat: m.latitude, lon: m.longitude }))
+        : [
+            ...markers.map((m) => ({ lat: m.latitude, lon: m.longitude })),
+            ...(userLocation
+              ? [{ lat: userLocation.latitude, lon: userLocation.longitude }]
+              : []),
+          ]
     // Neutral default: whole-of-India view. Never center on Mumbai unless
     // Mumbai data is actually on the map (selected trip / demo mode / GPS).
     if (src.length === 0) return [21.5, 79.0] as [number, number]
@@ -115,9 +137,10 @@ export default function RiskMap({
       src.reduce((a, p) => a + p.lat, 0) / n,
       src.reduce((a, p) => a + p.lon, 0) / n,
     ]
-  }, [routePoints, markers])
+  }, [routePoints, markers, userLocation])
 
-  const isEmpty = center.length === 2 && routePoints.length === 0 && markers.length === 0
+  const isEmpty =
+    center.length === 2 && routePoints.length === 0 && markers.length === 0 && !userLocation
 
   const markerPoints = useMemo(
     () => markers.map((m) => [m.latitude, m.longitude] as [number, number]),
@@ -165,6 +188,15 @@ export default function RiskMap({
           eventHandlers={{ click: () => onSelectMarker?.(m.id) }}
         />
       ))}
+      {userLocation && (
+        <Marker
+          position={[userLocation.latitude, userLocation.longitude]}
+          icon={userHereIcon}
+          interactive={false}
+          zIndexOffset={1000}
+          key={`you-are-here-${userLocation.latitude}-${userLocation.longitude}`}
+        />
+      )}
       {onBounds && <BoundsReporter onBounds={onBounds} />}
     </MapContainer>
   )
