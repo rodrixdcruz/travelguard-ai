@@ -554,6 +554,11 @@ export function DayPlanner() {
 const FOOD_FILTERS = ['ALL', 'VEG', 'NON-VEG', 'LOCAL', 'STREET FOOD', 'CAFE', 'BUDGET'] as const
 type FoodFilter = (typeof FOOD_FILTERS)[number]
 
+/** Filters that live OSM rows cannot always honor (no diet/price tags mapped).
+ * When a selection matches nothing for that reason, the UI says so instead of
+ * implying the area has no such food. */
+const UNVERIFIABLE_FOOD_FILTERS: ReadonlySet<FoodFilter> = new Set(['VEG', 'STREET FOOD', 'BUDGET'])
+
 export function FoodNearYou() {
   const { location, needsLocation } = useTouristLocation()
   const [food, setFood] = useState<import('../types/discovery').FoodPlace[] | null>(null)
@@ -587,7 +592,7 @@ export function FoodNearYou() {
       case 'NON-VEG': return food.filter((f) => f.non_vegetarian)
       case 'STREET FOOD': return food.filter((f) => f.cuisine.toLowerCase().includes('street'))
       case 'CAFE': return food.filter((f) => f.cuisine.toLowerCase().includes('cafe'))
-      case 'BUDGET': return food.filter((f) => f.price_range === '₹' || f.price_range === '₹₹')
+      case 'BUDGET': return food.filter((f) => f.price_range != null && (f.price_range === '₹' || f.price_range === '₹₹'))
       default: return food
     }
   }, [food, filter])
@@ -602,7 +607,7 @@ export function FoodNearYou() {
         latitude: f.latitude,
         longitude: f.longitude,
         distance_km: f.distance_km,
-        detail: `${f.cuisine} · ${f.price_range}${f.rating ? ` · ★${f.rating}` : ''}`,
+        detail: `${f.cuisine}${f.price_range ? ` · ${f.price_range}` : ''}${f.rating ? ` · ★${f.rating}` : ''}`,
         data_status: f.data_status,
       })),
     [filtered],
@@ -642,7 +647,7 @@ export function FoodNearYou() {
                 </div>
                 <div className="mt-3 flex items-center justify-between text-xs">
                   <span className="text-slate-400">
-                    {f.price_range}
+                    {f.price_range ?? 'Price unknown'}
                     {f.rating ? ` · ★${f.rating}` : ''} · {f.distance_km.toFixed(1)} km
                   </span>
                   <div className="flex items-center gap-1.5">
@@ -663,7 +668,13 @@ export function FoodNearYou() {
               </Panel>
             ))}
             {filtered.length === 0 && (
-              <Panel><p className="text-sm text-slate-500">No food places match this filter nearby.</p></Panel>
+              <Panel>
+                <p className="text-sm text-slate-500">
+                  {food.length > 0 && UNVERIFIABLE_FOOD_FILTERS.has(filter)
+                    ? `No ${filter === 'VEG' ? 'vegetarian' : filter.toLowerCase()} places are identifiable in the live map data here — diet and price tags are sparsely mapped. Try ALL.`
+                    : 'No food places match this filter nearby.'}
+                </p>
+              </Panel>
             )}
           </div>
 

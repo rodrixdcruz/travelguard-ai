@@ -39,17 +39,22 @@ CAT_FOOD = "catering"
 CAT_SIGHTS = "tourism.sights,tourism.attraction,leisure,entertainment,natural"
 
 # Services are fetched as one Places call PER KIND GROUP, then merged.
-# A single combined query (all five groups, one limit) is nearest-first, so
+# A single combined query (all groups, one limit) is nearest-first, so
 # wherever one kind is dense — a hospital district, a market street — it
 # fills the whole window and pharmacies/ATMs/transit vanish from discovery
 # even though they exist nearby (observed live in Nagpur). Disjoint category
 # sets per group mean no cross-group duplicates; _service_kind still refines
-# transit sub-kinds (metro/railway/bus) per feature.
+# transit sub-kinds (metro/railway/bus) per feature. Police stations and
+# tourist-information offices get their own groups too — without them the
+# Safety page and SAFETY filters report "unavailable" even in well-mapped
+# cities (observed live in Nagpur).
 SERVICE_CATEGORY_GROUPS: tuple[str, ...] = (
     "healthcare.hospital",
     "healthcare.pharmacy",
     "service.financial",
     "commercial.supermarket",
+    "service.police",
+    "tourism.information",
     "public_transport",
 )
 SERVICE_GROUP_FETCH_LIMIT = 20  # per group; circle-bounded, nearest-first
@@ -264,14 +269,25 @@ def fetch_food(latitude: float, longitude: float, radius_m: int = 8000, limit: i
         lat, lon = coords
         cats = [str(c) for c in (props.get("categories") or [])]
         cuisine = next((c.split(".")[-1].replace("_", " ").title() for c in cats if c.startswith("catering.")), "Restaurant")
+        # Raw OSM tags are the only diet/price signal Geoapify exposes here.
+        # They are used when mapped and left honest (False/None) when not —
+        # without this, live rows always read vegetarian=False and the VEG
+        # filter emptied out entire live datasets (observed live in Nagpur).
+        raw = props.get("raw") or {}
+        veg_tag = str(raw.get("diet:vegetarian", "")).lower()
+        vegan_only = str(raw.get("diet:vegan", "")).lower() == "only"
+        veg = veg_tag in ("yes", "only") or vegan_only
+        nonveg = (str(raw.get("diet:non-vegetarian", "")).lower() in ("yes", "only")
+                  or not veg)
+        price = raw.get("charge") or raw.get("price") or None
         out.append(
             {
                 "id": f"geoapify-{str(props.get('place_id', name[:24]))[:32]}",
                 "name": name[:120],
                 "cuisine": cuisine[:80],
-                "vegetarian": False,  # unknown until diet tags say so — filters stay honest
-                "non_vegetarian": True,
-                "price_range": None,  # never invented; per-person spend stays ESTIMATED upstream
+                "vegetarian": veg,
+                "non_vegetarian": nonveg,
+                "price_range": str(price) if price else None,  # never invented; per-person spend stays ESTIMATED upstream
                 "rating": None,
                 "latitude": lat,
                 "longitude": lon,
@@ -298,8 +314,12 @@ def _service_kind(cats: list[str]) -> Optional[str]:
             kinds.add("pharmacy")
         elif c.startswith("healthcare"):
             kinds.add("hospital")
+        elif c.startswith("service.police"):
+            kinds.add("police")
         elif c.startswith("service.financial"):
             kinds.add("atm")
+        elif c.startswith("tourism.information"):
+            kinds.add("tourist_help")
         elif c.startswith("public_transport.subway"):
             kinds.add("metro_station")
         elif c.startswith("public_transport.train"):
@@ -311,8 +331,9 @@ def _service_kind(cats: list[str]) -> Optional[str]:
         elif c.startswith("commercial.supermarket"):
             kinds.add("supermarket")
     for k in (
-        "pharmacy", "hospital", "atm", "metro_station",
-        "railway_station", "bus_stand", "supermarket", "transport",
+        "pharmacy", "hospital", "atm", "police", "tourist_help",
+        "metro_station", "railway_station", "bus_stand", "supermarket",
+        "transport",
     ):
         if k in kinds:
             return k

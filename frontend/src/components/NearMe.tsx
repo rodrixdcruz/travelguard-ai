@@ -123,7 +123,11 @@ export default function NearMe() {
   // the location, radius or search area changes. Stale requests are aborted so
   // a slow earlier area never overwrites a new one.
   useEffect(() => {
-    if (needsLocation || activeButton !== 'transport') return
+    // Fetch for the dedicated Transport view AND while the TRANSPORT filter
+    // chip is active — the chip shows the same transit pins without opening
+    // the Transport view, and without this fetch it could report zero
+    // results even where stops exist (observed live).
+    if (needsLocation || (activeButton !== 'transport' && filter !== 'TRANSPORT')) return
     const bbox = useMapBounds && mapBbox
       ? `${mapBbox.lat1},${mapBbox.lon1},${mapBbox.lat2},${mapBbox.lon2}`
       : undefined
@@ -156,7 +160,7 @@ export default function NearMe() {
       cancelled = true
       controller.abort()
     }
-  }, [location.latitude, location.longitude, needsLocation, transportRadius, useMapBounds, mapBbox, activeButton])
+  }, [location.latitude, location.longitude, needsLocation, transportRadius, useMapBounds, mapBbox, activeButton, filter])
 
   const allMarkers = useMemo(
     () => markersFromDiscovery(places, food, services),
@@ -207,6 +211,17 @@ export default function NearMe() {
 
   const selectedMarker: MapMarker | null =
     visibleMarkers.find((m) => m.id === selected) ?? null
+  // Detail-card subtitle: the category is dropped when it merely repeats the
+  // kind label ("Hospital · Hospital"), kept when it adds detail
+  // ("Food · Fast Food").
+  const selectedSubtitle = selectedMarker
+    ? (() => {
+        const label = KIND_META[selectedMarker.kind]?.label ?? selectedMarker.category
+        return selectedMarker.category.trim().toLowerCase() === label.toLowerCase()
+          ? label
+          : `${label} · ${selectedMarker.category}`
+      })()
+    : ''
 
   async function useMyLocation() {
     setLocating(true)
@@ -402,9 +417,7 @@ export default function NearMe() {
             <div className="flex items-start justify-between gap-2">
               <div>
                 <div className="text-sm font-semibold text-slate-100">{selectedMarker.name}</div>
-                <div className="text-xs text-slate-500 capitalize">
-                  {KIND_META[selectedMarker.kind]?.label ?? selectedMarker.category} · {selectedMarker.category}
-                </div>
+                <div className="text-xs text-slate-500 capitalize">{selectedSubtitle}</div>
               </div>
               <DataBadge status={selectedMarker.data_status} />
             </div>
@@ -582,7 +595,11 @@ export default function NearMe() {
                   </li>
                 ))}
                 {visibleMarkers.length === 0 && (
-                  <li className="text-sm text-slate-500">Nothing matches this filter nearby.</li>
+                  <li className="text-sm text-slate-500">
+                    {filter === 'TRANSPORT' && transportLoading
+                      ? 'Searching transit stops…'
+                      : 'Nothing matches this filter nearby.'}
+                  </li>
                 )}
               </ul>
             )}

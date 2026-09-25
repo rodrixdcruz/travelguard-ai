@@ -78,17 +78,24 @@ def test_fetch_food_shape(monkeypatch):
     monkeypatch.setenv("GEOAPIFY_API_KEY", "test-key")
     features = [
         _feature("Haldiram", 21.14, 79.08, ["catering", "catering.restaurant.indian"]),
-        _feature("Cafe Mocha", 21.15, 79.09, ["catering", "catering.cafe"]),
+        _feature("Cafe Mocha", 21.15, 79.09, ["catering", "catering.cafe"],
+                 extra={"raw": {"diet:vegetarian": "yes", "cuisine": "coffee_shop"}}),
+        _feature("Vegan Corner", 21.16, 79.10, ["catering", "catering.restaurant"],
+                 extra={"raw": {"diet:vegan": "only"}}),
     ]
     monkeypatch.setattr(
         geoapify_places, "_search", lambda *a, **k: features
     )
     out = geoapify_places.fetch_food(21.1458, 79.0882, radius_m=8000, limit=10)
-    assert [o["name"] for o in out] == ["Haldiram", "Cafe Mocha"]
+    assert [o["name"] for o in out] == ["Haldiram", "Cafe Mocha", "Vegan Corner"]
     assert all(o["data_status"] == "LIVE" for o in out)
     assert all(o["data_source"] == "geoapify_places" for o in out)
     assert out[0]["cuisine"] == "Indian"
     assert out[1]["cuisine"] == "Cafe"
+    # diet tags flow through so the VEG filter works on live data
+    assert out[0]["vegetarian"] is False
+    assert out[1]["vegetarian"] is True
+    assert out[2]["vegetarian"] is True  # vegan=only implies vegetarian
     # honesty: fields the API does not carry stay None/defaults
     assert out[0]["price_range"] is None
     assert out[0]["rating"] is None
@@ -118,6 +125,14 @@ def test_fetch_services_kind_mapping(monkeypatch):
         "commercial.supermarket": [
             _feature("Dmart Sitabuldi", 21.17, 79.09, ["commercial", "commercial.supermarket"], place_id="s-1"),
         ],
+        "service.police": [
+            _feature("Sitabuldi Police Station", 21.16, 79.09,
+                     ["service", "service.police"], place_id="pol-1"),
+        ],
+        "tourism.information": [
+            _feature("Nagpur Tourist Info", 21.15, 79.08,
+                     ["tourism", "tourism.information.office"], place_id="ti-1"),
+        ],
         "public_transport": [
             _feature("Sitabuldi Metro Station", 21.15, 79.09,
                      ["public_transport", "public_transport.subway"], place_id="t-1"),
@@ -140,8 +155,10 @@ def test_fetch_services_kind_mapping(monkeypatch):
     assert kinds["Sitabuldi Metro Station"] == "metro_station"
     assert kinds["Nagpur Railway Station"] == "railway_station"
     assert kinds["Gandhi Bus Stop"] == "bus_stand"
+    assert kinds["Sitabuldi Police Station"] == "police"
+    assert kinds["Nagpur Tourist Info"] == "tourist_help"
     assert all(o["phone"] is None for o in out)  # never fabricated
-    assert len(out) == 7  # every group contributed, none lost in the merge
+    assert len(out) == 9  # every group contributed, none lost in the merge
 
 
 def test_fetch_services_dense_kind_does_not_crowd_out_others(monkeypatch):
@@ -163,7 +180,7 @@ def test_fetch_services_dense_kind_does_not_crowd_out_others(monkeypatch):
             return hospitals[:lim]
         if categories == "healthcare.pharmacy":
             return [_feature("Lone Pharmacy", 21.1500, 79.0890, ["healthcare.pharmacy"], place_id="p-1")]
-        return []
+        return []  # police / tourist info / financial / supermarket groups: empty here
 
     monkeypatch.setattr(geoapify_places, "_search", _fake_search)
     out = geoapify_places.fetch_services(21.1458, 79.0882, radius_m=8000, limit=5)
