@@ -461,10 +461,10 @@ def test_transport_pagination_stops_safely_at_cap(monkeypatch):
     monkeypatch.setattr(geoapify_places, "TRANSPORT_MAX_PER_GROUP", 5)
 
     def _runaway(categories, *args, **kwargs):
-        # Always a FULL page (args[4] = requested page size — _search is called
+        # Always a FULL page (args[3] = requested page size — _search is called
         # as (categories, lat, lon, radius_m, page_size)): an implementation
         # without a cap would loop forever.
-        return [_bus(f"Bus {categories}-{kwargs.get('offset', 0)}-{i}", i) for i in range(args[4])]
+        return [_bus(f"Bus {categories}-{kwargs.get('offset', 0)}-{i}", i) for i in range(args[3])]
 
     monkeypatch.setattr(geoapify_places, "_search", _runaway)
     out = geoapify_places.fetch_transport(21.1458, 79.0882, radius_m=5000)
