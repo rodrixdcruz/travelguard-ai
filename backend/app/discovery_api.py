@@ -164,6 +164,43 @@ async def safety_local(
     }
 
 
+@router.get("/transport/nearby")
+async def transport_nearby(
+    latitude: float = Query(..., ge=-90, le=90),
+    longitude: float = Query(..., ge=-180, le=180),
+    radius_km: float = Query(5.0, gt=0, le=50),
+    bbox: Optional[str] = Query(None),
+    limit: int = Query(400, ge=1, le=2000),
+) -> dict[str, Any]:
+    """ALL transit stops/stations in the selected area (bus, metro, railway,
+    tram, platforms, entrances) — paginated per category so dense modes can
+    not crowd out sparse ones. ``bbox`` = "lat1,lon1,lat2,lon2" searches the
+    visible map rectangle instead of a circle around the point. Station
+    positions come from OSM via Geoapify; they are NOT live vehicle tracking
+    or arrival schedules."""
+    data = await asyncio.to_thread(
+        services_provider.fetch_transport_nearby,
+        latitude, longitude, radius_km=radius_km, bbox=bbox, limit=limit,
+    )
+    items = data["stops"]
+    summary = provider_summary(
+        items,
+        fallback_line="No transit stations returned by live providers in the selected area",
+    )
+    return {
+        "origin": {"latitude": latitude, "longitude": longitude},
+        "radius_km": radius_km,
+        "count": len(items),
+        "transport": items,
+        "data_status": summary["status"],
+        "data_source": "+".join(sorted({i.get("data_source", "") for i in items} - {""})) or "travelguard_demo_dataset",
+        "provider_summary": summary,
+        "failed_groups": data.get("failed_groups", []),
+        "area_filter": data.get("area_filter", "circle"),
+        "note": "Station locations from OpenStreetMap — not live vehicle tracking or arrival schedules.",
+    }
+
+
 @router.get("/transport/modes")
 async def transport_modes() -> dict[str, Any]:
     """Available transport modes with their ESTIMATED rate model."""

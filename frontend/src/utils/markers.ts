@@ -1,4 +1,4 @@
-import type { DataStatus, FoodPlace, LocalService, Place } from '../types/discovery'
+import type { DataStatus, FoodPlace, LocalService, Place, TransportStop } from '../types/discovery'
 
 export type MarkerKind =
   | 'attraction'
@@ -11,8 +11,21 @@ export type MarkerKind =
   | 'bus_stand'
   | 'railway_station'
   | 'metro_station'
+  | 'metro_entrance'
+  | 'tram'
   | 'taxi'
   | 'sos'
+
+/** Transport-kind groups for the Transport tab's sub-filters. */
+export type TransportGroup = 'ALL' | 'BUS' | 'METRO' | 'RAILWAY' | 'OTHER'
+
+export const TRANSPORT_GROUP_KINDS: Record<TransportGroup, MarkerKind[]> = {
+  ALL: ['bus_stand', 'metro_station', 'metro_entrance', 'railway_station', 'tram', 'transport'],
+  BUS: ['bus_stand'],
+  METRO: ['metro_station', 'metro_entrance'],
+  RAILWAY: ['railway_station'],
+  OTHER: ['tram', 'transport'],
+}
 
 export interface MapMarker {
   id: string
@@ -30,12 +43,12 @@ export interface MapMarker {
 export type MapFilter = 'ALL' | 'ATTRACTIONS' | 'FOOD' | 'SAFETY' | 'SERVICES' | 'TRANSPORT'
 
 export const FILTER_KINDS: Record<MapFilter, MarkerKind[]> = {
-  ALL: ['attraction', 'food', 'hospital', 'police', 'pharmacy', 'atm', 'transport', 'bus_stand', 'railway_station', 'metro_station', 'taxi', 'sos'],
+  ALL: ['attraction', 'food', 'hospital', 'police', 'pharmacy', 'atm', 'transport', 'bus_stand', 'railway_station', 'metro_station', 'metro_entrance', 'tram', 'taxi', 'sos'],
   ATTRACTIONS: ['attraction'],
   FOOD: ['food'],
   SAFETY: ['hospital', 'police', 'sos'],
   SERVICES: ['pharmacy', 'atm'],
-  TRANSPORT: ['transport', 'bus_stand', 'railway_station', 'metro_station', 'taxi'],
+  TRANSPORT: ['transport', 'bus_stand', 'railway_station', 'metro_station', 'metro_entrance', 'tram', 'taxi'],
 }
 
 export const KIND_META: Record<MarkerKind, { glyph: string; color: string; label: string }> = {
@@ -46,9 +59,11 @@ export const KIND_META: Record<MarkerKind, { glyph: string; color: string; label
   pharmacy: { glyph: '℞', color: '#2dd4bf', label: 'Pharmacy' },
   atm: { glyph: '₹', color: '#a78bfa', label: 'ATM' },
   transport: { glyph: '🚉', color: '#94a3b8', label: 'Transport' },
-  bus_stand: { glyph: '🚌', color: '#7dd3fc', label: 'Bus stand' },
+  bus_stand: { glyph: '🚌', color: '#7dd3fc', label: 'Bus stop' },
   railway_station: { glyph: '🚆', color: '#c4b5fd', label: 'Railway station' },
   metro_station: { glyph: '🚇', color: '#f0abfc', label: 'Metro station' },
+  metro_entrance: { glyph: '🚪', color: '#fda4af', label: 'Metro entrance' },
+  tram: { glyph: '🚋', color: '#fcd34d', label: 'Tram' },
   taxi: { glyph: '🚖', color: '#fde68a', label: 'Taxi / auto stand' },
   sos: { glyph: '🆘', color: '#fb923c', label: 'Emergency' },
 }
@@ -115,4 +130,26 @@ export function markersFromDiscovery(
   }))
 
   return [...placeMarkers, ...foodMarkers, ...serviceMarkers]
+}
+
+
+/** Transport-stop rows (GET /api/transport/nearby) → map markers. */
+export function transportMarkers(stops: TransportStop[]): MapMarker[] {
+  return stops.map((t) => ({
+    id: t.id,
+    name: t.name,
+    kind:
+      t.transport_type === 'bus_stop' || t.transport_type === 'bus_terminal' ? 'bus_stand'
+      : t.transport_type === 'metro_station' ? 'metro_station'
+      : t.transport_type === 'metro_entrance' ? 'metro_entrance'
+      : t.transport_type === 'railway_station' ? 'railway_station'
+      : t.transport_type === 'tram' || t.transport_type === 'light_rail' || t.transport_type === 'monorail' ? 'tram'
+      : 'transport',
+    category: t.transport_type,
+    latitude: t.latitude,
+    longitude: t.longitude,
+    distance_km: t.distance_km,
+    detail: `${t.transport_type.replace(/_/g, ' ')}${t.address ? ` · ${t.address}` : ''}`,
+    data_status: t.data_status,
+  }))
 }
